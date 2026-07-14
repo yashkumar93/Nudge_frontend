@@ -96,19 +96,13 @@ export default function DashboardPage() {
   const [flags, setFlags] = useState<AnomalyFlag[]>([]);
   const [loadingFlags, setLoadingFlags] = useState<boolean>(true);
   const [flagSearchQuery, setFlagSearchQuery] = useState<string>("");
+  const [flagStatusFilter, setFlagStatusFilter] = useState<"pending" | "resolved" | "all">("pending");
   
   // Common states
   const [refreshing, setRefreshing] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [autoRefresh, setAutoRefresh] = useState<boolean>(true);
-
-  // Simulator State
-  const [simText, setSimText] = useState<string>("Bhaiya 250 packets sugar bhej dena, stock khatam ho gaya hai. Emergency.");
-  const [simPhone, setSimPhone] = useState<string>("919811223344");
-  const [simName, setSimName] = useState<string>("Rajesh Grocery Store");
-  const [simulating, setSimulating] = useState<boolean>(false);
-  const [simSuccess, setSimSuccess] = useState<string | null>(null);
 
   // Decision Modal State
   const [decisionFlag, setDecisionFlag] = useState<AnomalyFlag | null>(null);
@@ -136,7 +130,7 @@ export default function DashboardPage() {
       setOrders(data.orders || []);
     } catch (err: any) {
       console.error("Error loading orders:", err);
-      setError("Unable to reach backend (`http://localhost:8000`). If testing locally without the Python server running, start it with `python run.py` inside `/backend`.");
+      setError("Unable to reach backend. If testing locally without the Python server running, start it with `python run.py` inside `/backend`.");
     } finally {
       setLoadingOrders(false);
       setRefreshing(false);
@@ -178,34 +172,6 @@ export default function DashboardPage() {
     return () => clearInterval(interval);
   }, [autoRefresh, refreshAll]);
 
-  const handleSimulateMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!simText.trim()) return;
-    setSimulating(true);
-    setSimSuccess(null);
-
-    try {
-      const url = new URL(`${API_BASE_URL}/test/simulate-message`);
-      url.searchParams.append("text", simText);
-      url.searchParams.append("from_phone", simPhone);
-      url.searchParams.append("customer_name", simName);
-
-      const res = await fetch(url.toString(), { method: "POST" });
-      const data = await res.json();
-      setSimSuccess(data.message || "Message ingested successfully!");
-      
-      // Wait for agent pipeline to run
-      setTimeout(() => {
-        refreshAll(true);
-        setSimulating(false);
-      }, 1500);
-    } catch (err) {
-      console.error("Simulator error:", err);
-      setSimSuccess("Failed to send simulation request. Make sure FastAPI is running.");
-      setSimulating(false);
-    }
-  };
-
   const handleDecision = async (flagId: string, decision: "approved" | "rejected" | "modified", overrideData?: any) => {
     setDecisionLoading(true);
     try {
@@ -226,10 +192,13 @@ export default function DashboardPage() {
       
       if (!res.ok) throw new Error("Failed to record decision");
       
+      // Close modal / state
       setDecisionFlag(null);
       setDecisionNotes("");
       setIsModifying(false);
-      refreshAll(true);
+      
+      // Force instant refresh of both feeds
+      await refreshAll(true);
     } catch (err) {
       console.error("Error recording decision:", err);
       alert("Failed to submit decision to server.");
@@ -300,9 +269,21 @@ export default function DashboardPage() {
 
   // Filtered flags
   const filteredFlags = flags.filter(flag => {
+    const order = flag.orders;
+    if (!order) return false;
+    
+    // 1. Filter by flag status tab
+    if (flagStatusFilter === "pending" && order.status !== "pending_review") {
+      return false;
+    }
+    if (flagStatusFilter === "resolved" && order.status === "pending_review") {
+      return false;
+    }
+    
+    // 2. Search query check
     if (flagSearchQuery.trim() === "") return true;
     const q = flagSearchQuery.toLowerCase();
-    const custName = flag.orders?.customers?.name?.toLowerCase() || "";
+    const custName = order.customers?.name?.toLowerCase() || "";
     const reasoning = flag.llm_reasoning.toLowerCase();
     return custName.includes(q) || reasoning.includes(q);
   });
@@ -362,7 +343,7 @@ export default function DashboardPage() {
       case "modified":
         return (
           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-            <Edit3 className="w-3.5 h-3.5" /> Modified & Approved
+            <Edit3 className="w-3.5 h-3.5" /> Modified
           </span>
         );
       default:
@@ -425,80 +406,6 @@ export default function DashboardPage() {
             <Sparkles className="w-6 h-6" />
           </div>
         </div>
-      </div>
-
-      {/* 2. LIVE SIMULATOR FOR TEST INGESTION */}
-      <div className="glass-panel rounded-2xl p-6 border border-emerald-500/30 bg-gradient-to-r from-emerald-950/20 via-[#11192d]/50 to-[#0b0f19]">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-              <MessageSquare className="w-5 h-5" />
-            </div>
-            <div>
-              <h2 className="text-base font-bold text-white flex items-center gap-2">
-                Live Ingestion & Anomaly Detection Simulator
-              </h2>
-              <p className="text-xs text-slate-400">
-                Simulate a raw WhatsApp order. The background agent executes: Profile Computation ➔ Signal Checks ➔ LangGraph Audit Classification.
-              </p>
-            </div>
-          </div>
-          {simSuccess && (
-            <div className="text-xs px-3 py-1.5 rounded-lg bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 font-medium">
-              ✓ {simSuccess}
-            </div>
-          )}
-        </div>
-
-        <form onSubmit={handleSimulateMessage} className="grid grid-cols-1 md:grid-cols-12 gap-3">
-          <div className="md:col-span-3">
-            <label className="block text-[11px] font-medium text-slate-400 mb-1">Customer Display Name</label>
-            <input
-              type="text"
-              value={simName}
-              onChange={e => setSimName(e.target.value)}
-              className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500/50"
-              placeholder="e.g. Rajesh Grocery"
-            />
-          </div>
-          <div className="md:col-span-2">
-            <label className="block text-[11px] font-medium text-slate-400 mb-1">WhatsApp Phone</label>
-            <input
-              type="text"
-              value={simPhone}
-              onChange={e => setSimPhone(e.target.value)}
-              className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500/50 font-mono"
-              placeholder="9198..."
-            />
-          </div>
-          <div className="md:col-span-5">
-            <label className="block text-[11px] font-medium text-slate-400 mb-1">Raw WhatsApp Text Message</label>
-            <input
-              type="text"
-              value={simText}
-              onChange={e => setSimText(e.target.value)}
-              className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500/50"
-              placeholder="e.g. 5kg rice, 1 box maggi, 250 packets sugar..."
-            />
-          </div>
-          <div className="md:col-span-2 flex items-end">
-            <button
-              type="submit"
-              disabled={simulating}
-              className="w-full bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 disabled:opacity-50 text-white font-medium text-xs py-2.5 px-4 rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 transition-all active:scale-95 cursor-pointer"
-            >
-              {simulating ? (
-                <>
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Audit Running...
-                </>
-              ) : (
-                <>
-                  <Send className="w-3.5 h-3.5" /> Ingest & Audit
-                </>
-              )}
-            </button>
-          </div>
-        </form>
       </div>
 
       {/* 3. TABS SELECTOR */}
@@ -706,22 +613,40 @@ export default function DashboardPage() {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <h2 className="text-lg font-bold text-white tracking-tight flex items-center gap-2">
-                Pending Anomaly Flag Reviews
+                Anomaly Audit Reviews
               </h2>
               <p className="text-xs text-slate-400">
-                Orders held by the LangGraph auditor graph that require store manager validation.
+                Orders audited by the LangGraph agent. Use actions to resolve outstanding flags.
               </p>
             </div>
             
-            <div className="relative">
-              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                type="text"
-                placeholder="Search flagged reviews..."
-                value={flagSearchQuery}
-                onChange={e => setFlagSearchQuery(e.target.value)}
-                className="bg-black/30 border border-white/10 rounded-xl pl-9 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-white/20 w-48 sm:w-64"
-              />
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search flagged reviews..."
+                  value={flagSearchQuery}
+                  onChange={e => setFlagSearchQuery(e.target.value)}
+                  className="bg-black/30 border border-white/10 rounded-xl pl-9 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-white/20 w-48 sm:w-64"
+                />
+              </div>
+
+              <div className="flex items-center gap-1 bg-black/30 p-1 rounded-xl border border-white/10 text-xs">
+                {(["pending", "resolved", "all"] as const).map((tab) => (
+                  <button
+                    key={tab}
+                    onClick={() => setFlagStatusFilter(tab)}
+                    className={`px-3 py-1 rounded-lg capitalize transition-all cursor-pointer ${
+                      flagStatusFilter === tab
+                        ? "bg-rose-500 text-white font-medium shadow-sm"
+                        : "text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    {tab}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -743,14 +668,15 @@ export default function DashboardPage() {
                 if (!order) return null;
                 const items = order.order_items || order.raw_parsed?.items || [];
                 const rawText = order.whatsapp_messages?.raw_text || order.raw_parsed?.notes || "";
-                
-                // Anomaly specific signals
                 const sigs = flag.raw_signals || {};
+                const isPending = order.status === "pending_review";
                 
                 return (
                   <div
                     key={flag.id}
-                    className="glass-panel rounded-3xl p-6 border border-white/10 space-y-6 relative overflow-hidden"
+                    className={`glass-panel rounded-3xl p-6 border transition-all space-y-6 relative overflow-hidden ${
+                      isPending ? "border-white/10" : "border-emerald-500/20 bg-emerald-950/5"
+                    }`}
                   >
                     {/* Header: Customer Name and Severity */}
                     <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/10 pb-4">
@@ -759,9 +685,12 @@ export default function DashboardPage() {
                           <ShieldAlert className="w-5 h-5" />
                         </div>
                         <div>
-                          <h4 className="font-bold text-white text-base">
-                            {order.customers?.name || "Customer"}
-                          </h4>
+                          <div className="flex items-center gap-2">
+                            <h4 className="font-bold text-white text-base">
+                              {order.customers?.name || "Customer"}
+                            </h4>
+                            {getStatusBadge(order.status)}
+                          </div>
                           <p className="text-xs text-slate-400 font-mono mt-0.5">
                             Order Ref: {order.id.slice(0, 8)} • +{order.customers?.whatsapp_phone}
                           </p>
@@ -906,31 +835,37 @@ export default function DashboardPage() {
                         <code className="text-slate-400 font-mono">{flag.model_used}</code>
                       </div>
 
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => {
-                            setDecisionFlag(flag);
-                            setDecisionNotes("");
-                          }}
-                          className="px-4 py-2 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-300 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
-                        >
-                          <ThumbsDown className="w-3.5 h-3.5" /> Reject Order
-                        </button>
-                        
-                        <button
-                          onClick={() => startModify(flag)}
-                          className="px-4 py-2 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/30 text-indigo-300 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
-                        >
-                          <Edit3 className="w-3.5 h-3.5" /> Modify Quantities
-                        </button>
+                      {isPending ? (
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => {
+                              setDecisionFlag(flag);
+                              setDecisionNotes("");
+                            }}
+                            className="px-4 py-2 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-300 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <ThumbsDown className="w-3.5 h-3.5" /> Reject Order
+                          </button>
+                          
+                          <button
+                            onClick={() => startModify(flag)}
+                            className="px-4 py-2 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/30 text-indigo-300 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" /> Modify Quantities
+                          </button>
 
-                        <button
-                          onClick={() => handleDecision(flag.id, "approved")}
-                          className="px-5 py-2 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-lg shadow-emerald-500/10 cursor-pointer"
-                        >
-                          <ThumbsUp className="w-3.5 h-3.5" /> Approve Order
-                        </button>
-                      </div>
+                          <button
+                            onClick={() => handleDecision(flag.id, "approved")}
+                            className="px-5 py-2 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-lg shadow-emerald-500/10 cursor-pointer"
+                          >
+                            <ThumbsUp className="w-3.5 h-3.5" /> Approve Order
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="text-xs text-emerald-400 font-semibold bg-emerald-500/10 px-3 py-1.5 rounded-xl border border-emerald-500/20 flex items-center gap-1">
+                          ✓ This audit flag has been processed and closed.
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
