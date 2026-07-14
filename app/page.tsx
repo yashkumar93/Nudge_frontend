@@ -17,14 +17,14 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 type Order = {
   id: string;
   business_id: string;
-  channel: string;
-  raw_input: string;
-  parsed_json: any;
+  channel?: string;
   total_value: number;
   status: string;
   created_at: string;
   customers?: { name: string; whatsapp_phone: string; total_orders: number; total_spend: number };
   order_items?: OrderItem[];
+  whatsapp_messages?: { raw_text: string };
+  raw_parsed?: any;
 };
 
 type OrderItem = {
@@ -210,8 +210,11 @@ export default function NudgeDashboard() {
                 No orders found.
               </div>
             )}
-            {orders.map((order) => {
+            {orders.map((order, index) => {
               const hasFlag = flags.some(f => f.order_id === order.id && order.status === "pending_review");
+              
+              const prevOrder = index > 0 ? orders[index - 1] : null;
+              const isSameCustomerAsPrev = prevOrder && prevOrder.customers?.name === order.customers?.name;
               
               return (
                 <div 
@@ -221,8 +224,12 @@ export default function NudgeDashboard() {
                 >
                   <div className="card-header">
                     <div>
-                      <div className="card-title">{order.customers?.name || "Unknown Customer"}</div>
-                      <div className="card-subtitle">Via {order.channel} • {new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                      {!isSameCustomerAsPrev && (
+                        <div className="card-title">{order.customers?.name || "Unknown Customer"}</div>
+                      )}
+                      <div className="card-subtitle" style={isSameCustomerAsPrev ? { marginTop: 0 } : {}}>
+                        Via {order.channel} • {new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </div>
                     </div>
                     <div style={{ textAlign: "right" }}>
                       <div className="card-amount">₹{(order.total_value || 0).toLocaleString()}</div>
@@ -302,7 +309,7 @@ export default function NudgeDashboard() {
                   <div>
                     <div className="section-title">Raw Message</div>
                     <div style={{ padding: 16, backgroundColor: "var(--color-bg-surface)", borderRadius: "var(--radius-md)", border: "1px solid var(--color-border-subtle)", whiteSpace: "pre-wrap", fontSize: 13, color: "var(--color-text-muted)" }}>
-                      {selectedOrder.raw_input || "No raw text available."}
+                      {selectedOrder.whatsapp_messages?.raw_text || "No raw text available."}
                     </div>
                   </div>
                   <div>
@@ -318,7 +325,7 @@ export default function NudgeDashboard() {
                           </tr>
                         </thead>
                         <tbody>
-                          {(selectedOrder.order_items || selectedOrder.parsed_json?.items || []).map((item: any, i: number) => (
+                          {(selectedOrder.order_items || selectedOrder.raw_parsed?.items || []).map((item: any, i: number) => (
                             <tr key={i}>
                               <td>{item.product_name_raw}</td>
                               <td style={{ textAlign: "right" }}>{item.quantity} {item.unit}</td>
