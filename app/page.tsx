@@ -3,71 +3,40 @@
 import React, { useState, useEffect, useCallback } from "react";
 import {
   RefreshCw,
-  Send,
-  MessageSquare,
-  Package,
-  User,
-  Clock,
-  CheckCircle2,
-  AlertCircle,
-  FileText,
-  TrendingUp,
-  X,
   Search,
-  ChevronRight,
-  Filter,
-  Sparkles,
-  PhoneCall,
-  ShieldAlert,
-  ThumbsUp,
-  ThumbsDown,
-  Edit3,
-  Sliders,
-  Settings,
-  Calendar,
+  CheckCircle2,
+  XCircle,
+  AlertTriangle,
+  Clock,
   Download,
-  AlertTriangle
+  FileText
 } from "lucide-react";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
-interface OrderItem {
-  id?: string;
-  product_name_raw: string;
-  quantity: number;
-  unit?: string;
-  unit_price?: number;
-  line_total?: number;
-}
-
-interface Customer {
-  name: string;
-  whatsapp_phone: string;
-  total_orders?: number;
-  total_spend?: number;
-}
-
-interface Order {
+type Order = {
   id: string;
   business_id: string;
-  customer_id: string;
-  order_time: string;
-  total_value?: number;
+  channel: string;
+  raw_input: string;
+  parsed_json: any;
+  total_value: number;
   status: string;
-  raw_parsed?: {
-    items: OrderItem[];
-    total_estimate?: number;
-    notes?: string;
-  };
   created_at: string;
-  customers?: Customer;
+  customers?: { name: string; whatsapp_phone: string; total_orders: number; total_spend: number };
   order_items?: OrderItem[];
-  whatsapp_messages?: {
-    raw_text: string;
-  };
-}
+};
 
-interface AnomalyFlag {
+type OrderItem = {
+  id: string;
+  product_name_raw: string;
+  quantity: number;
+  unit: string;
+  unit_price: number;
+  line_total: number;
+};
+
+type AnomalyFlag = {
   id: string;
   order_id: string;
   business_id: string;
@@ -75,114 +44,86 @@ interface AnomalyFlag {
   severity: "low" | "medium" | "high" | "critical";
   anomaly_type: string[];
   llm_reasoning: string;
-  recommended_action: "approve" | "hold_for_review" | "contact_customer" | "check_inventory" | "escalate" | "reject";
-  confidence_score: number;
-  raw_signals: any;
-  model_used: string;
+  recommended_action: string;
   created_at: string;
   orders?: Order;
-}
+};
 
-export default function DashboardPage() {
-  const [activeTab, setActiveTab] = useState<"orders" | "flags" | "analytics">("orders");
-  
-  // Orders State
+export default function NudgeDashboard() {
   const [orders, setOrders] = useState<Order[]>([]);
-  const [loadingOrders, setLoadingOrders] = useState<boolean>(true);
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [orderSearchQuery, setOrderSearchQuery] = useState<string>("");
-  
-  // Flags State
   const [flags, setFlags] = useState<AnomalyFlag[]>([]);
-  const [loadingFlags, setLoadingFlags] = useState<boolean>(true);
-  const [flagSearchQuery, setFlagSearchQuery] = useState<string>("");
-  const [flagStatusFilter, setFlagStatusFilter] = useState<"pending" | "resolved" | "all">("pending");
+  const [loadingOrders, setLoadingOrders] = useState(true);
+  const [loadingFlags, setLoadingFlags] = useState(true);
+  const [statusFilter, setStatusFilter] = useState<string>("all");
   
-  // Common states
-  const [refreshing, setRefreshing] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
-  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
-  const [autoRefresh, setAutoRefresh] = useState<boolean>(true);
-
-  // Decision Modal State
-  const [decisionFlag, setDecisionFlag] = useState<AnomalyFlag | null>(null);
-  const [decisionNotes, setDecisionNotes] = useState<string>("");
-  const [decisionLoading, setDecisionLoading] = useState<boolean>(false);
+  // Selection
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   
-  // Modify State
-  const [isModifying, setIsModifying] = useState<boolean>(false);
-  const [modItems, setModItems] = useState<OrderItem[]>([]);
-  const [modTotal, setModTotal] = useState<number>(0);
+  // Decision State
+  const [decisionLoading, setDecisionLoading] = useState(false);
+  const [decisionNotes, setDecisionNotes] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
+  
+  // Reporting
+  const [reportDownloading, setReportDownloading] = useState(false);
+  const [startDate] = useState(() => new Date().toISOString().split("T")[0]);
+  const [endDate] = useState(() => new Date().toISOString().split("T")[0]);
 
-  // Reports Date range
-  const [startDate, setStartDate] = useState<string>("2026-07-01");
-  const [endDate, setEndDate] = useState<string>("2026-07-15");
-  const [reportDownloading, setReportDownloading] = useState<boolean>(false);
-
-  const fetchOrders = useCallback(async (isQuiet = false) => {
-    if (!isQuiet) setLoadingOrders(true);
-    else setRefreshing(true);
-    
+  const fetchOrders = useCallback(async () => {
+    setLoadingOrders(true);
     try {
       const res = await fetch(`${API_BASE_URL}/orders?limit=50${statusFilter !== "all" ? `&status_filter=${statusFilter}` : ""}`);
-      if (!res.ok) throw new Error("Failed to connect to backend API");
+      if (!res.ok) throw new Error("Failed to load orders");
       const data = await res.json();
       setOrders(data.orders || []);
     } catch (err: any) {
-      console.error("Error loading orders:", err);
-      setError("Unable to reach backend. If testing locally without the Python server running, start it with `python run.py` inside `/backend`.");
+      console.error(err);
+      setErrorMessage("Unable to reach backend. Start it inside `/backend` with `python run.py`.");
     } finally {
       setLoadingOrders(false);
-      setRefreshing(false);
     }
   }, [statusFilter]);
 
-  const fetchFlags = useCallback(async (isQuiet = false) => {
-    if (!isQuiet) setLoadingFlags(true);
-    else setRefreshing(true);
-    
+  const fetchFlags = useCallback(async () => {
+    setLoadingFlags(true);
     try {
       const res = await fetch(`${API_BASE_URL}/flags?limit=50`);
       if (!res.ok) throw new Error("Failed to load anomaly flags");
       const data = await res.json();
       setFlags(data.flags || []);
     } catch (err) {
-      console.error("Error loading flags:", err);
+      console.error(err);
     } finally {
       setLoadingFlags(false);
-      setRefreshing(false);
     }
   }, []);
 
-  const refreshAll = useCallback((isQuiet = false) => {
-    fetchOrders(isQuiet);
-    fetchFlags(isQuiet);
+  const refreshAll = useCallback(() => {
+    fetchOrders();
+    fetchFlags();
   }, [fetchOrders, fetchFlags]);
 
   useEffect(() => {
     refreshAll();
   }, [refreshAll]);
 
-  // Auto polling every 5 seconds
+  // Polling
   useEffect(() => {
-    if (!autoRefresh) return;
     const interval = setInterval(() => {
-      refreshAll(true);
+      fetchOrders();
+      fetchFlags();
     }, 5000);
     return () => clearInterval(interval);
-  }, [autoRefresh, refreshAll]);
+  }, [fetchOrders, fetchFlags]);
 
-  const handleDecision = async (flagId: string, decision: "approved" | "rejected" | "modified", overrideData?: any) => {
+  const handleDecision = async (flagId: string, decision: "approved" | "rejected" | "modified") => {
     setDecisionLoading(true);
+    setErrorMessage("");
     try {
       const payload: any = {
         decision,
-        notes: decisionNotes || `Processed via Nudge Review Dashboard.`
+        notes: decisionNotes || `Processed via Nudge Editorial Review Workspace.`
       };
-      
-      if (decision === "modified" && overrideData) {
-        payload.modified_order_data = overrideData;
-      }
 
       const res = await fetch(`${API_BASE_URL}/flags/${flagId}/decision`, {
         method: "POST",
@@ -190,46 +131,23 @@ export default function DashboardPage() {
         body: JSON.stringify(payload)
       });
       
-      if (!res.ok) throw new Error("Failed to record decision");
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.detail || `Server returned ${res.status}`);
+      }
       
-      setDecisionFlag(null);
       setDecisionNotes("");
-      setIsModifying(false);
-      await refreshAll(true);
-    } catch (err) {
-      console.error("Error recording decision:", err);
-      alert("Failed to submit decision to server.");
+      setSelectedOrderId(null);
+      refreshAll(); // Ensure UI instantly updates after decision
+    } catch (err: any) {
+      console.error("Decision Error:", err);
+      setErrorMessage(`Failed to record decision: ${err.message}`);
     } finally {
       setDecisionLoading(false);
     }
   };
 
-  const startModify = (flag: AnomalyFlag) => {
-    const orderItems = flag.orders?.order_items || flag.orders?.raw_parsed?.items || [];
-    setModItems([...orderItems]);
-    setModTotal(flag.orders?.total_value || 0);
-    setDecisionFlag(flag);
-    setIsModifying(true);
-  };
-
-  const updateModQty = (index: number, qty: number) => {
-    const updated = [...modItems];
-    updated[index].quantity = qty;
-    
-    if (updated[index].unit_price) {
-      updated[index].line_total = qty * (updated[index].unit_price || 0);
-    }
-    
-    const total = updated.reduce((acc, item) => {
-      return acc + (item.line_total || (item.quantity * (item.unit_price || 0)) || 0);
-    }, 0);
-    
-    setModItems(updated);
-    setModTotal(total);
-  };
-
-  const handleDownloadReport = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleDownloadReport = async () => {
     setReportDownloading(true);
     try {
       const url = `${API_BASE_URL}/reports/generate?start_date=${startDate}&end_date=${endDate}`;
@@ -240,990 +158,193 @@ export default function DashboardPage() {
       const downloadUrl = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = downloadUrl;
-      a.download = `nudge_report_${startDate}_to_${endDate}.pdf`;
+      a.download = `nudge_report_${startDate}.pdf`;
       document.body.appendChild(a);
       a.click();
       a.remove();
     } catch (err) {
-      console.error("Error downloading report:", err);
       alert("Error generating report. Make sure FastAPI server is running.");
     } finally {
       setReportDownloading(false);
     }
   };
 
-  // Filtered orders
-  const filteredOrders = orders.filter(order => {
-    if (orderSearchQuery.trim() === "") return true;
-    const q = orderSearchQuery.toLowerCase();
-    const custName = order.customers?.name?.toLowerCase() || "";
-    const custPhone = order.customers?.whatsapp_phone || "";
-    const rawMsg = order.whatsapp_messages?.raw_text?.toLowerCase() || "";
-    return custName.includes(q) || custPhone.includes(q) || rawMsg.includes(q);
-  });
-
-  // Filtered flags
-  const filteredFlags = flags.filter(flag => {
-    const order = flag.orders;
-    if (!order) return false;
-    
-    if (flagStatusFilter === "pending" && order.status !== "pending_review") {
-      return false;
-    }
-    if (flagStatusFilter === "resolved" && order.status === "pending_review") {
-      return false;
-    }
-    
-    if (flagSearchQuery.trim() === "") return true;
-    const q = flagSearchQuery.toLowerCase();
-    const custName = order.customers?.name?.toLowerCase() || "";
-    const reasoning = flag.llm_reasoning.toLowerCase();
-    return custName.includes(q) || reasoning.includes(q);
-  });
-
-  // Calculate Metrics
-  const totalSpend = orders.reduce((acc, curr) => acc + (curr.total_value || 0), 0);
-  const totalFlagsCount = flags.filter(f => f.is_flagged && f.orders?.status === "pending_review").length;
-  
-  // Extract inventory shortfalls
-  const inventoryAlerts: any[] = [];
-  flags.forEach(f => {
-    const risks = f.raw_signals?.inventory?.inventory_risks || [];
-    risks.forEach((r: any) => {
-      inventoryAlerts.push({
-        ...r,
-        customer: f.orders?.customers?.name || "Client",
-        orderId: f.orders?.id,
-        date: f.created_at
-      });
-    });
-  });
-
-  const getSeverityBadge = (sev: string) => {
-    switch (sev) {
-      case "critical":
-        return <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-[#FF6B6B]/20 text-[#FF6B6B] border border-[#FF6B6B]/30 animate-pulse">Critical</span>;
-      case "high":
-        return <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-orange-500/20 text-orange-300 border border-orange-500/30">High</span>;
-      case "medium":
-        return <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30">Medium</span>;
-      default:
-        return <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-[#5C33F6]/20 text-[#E8EAF6] border border-[#5C33F6]/30">Low</span>;
-    }
-  };
-
-  const getStatusBadge = (status: string, isLightContext = false) => {
-    const commonClasses = "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border";
-    switch (status) {
-      case "approved":
-      case "auto_approved":
-        return (
-          <span className={`${commonClasses} ${
-            isLightContext 
-              ? "bg-emerald-500/10 text-emerald-700 border-emerald-500/20" 
-              : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-          }`}>
-            <CheckCircle2 className="w-3.5 h-3.5" /> Approved
-          </span>
-        );
-      case "pending_review":
-        return (
-          <span className={`${commonClasses} ${
-            isLightContext 
-              ? "bg-amber-500/10 text-amber-700 border-amber-500/20" 
-              : "bg-amber-500/10 text-amber-400 border-amber-500/20"
-          }`}>
-            <Clock className="w-3.5 h-3.5" /> Pending Review
-          </span>
-        );
-      case "rejected":
-        return (
-          <span className={`${commonClasses} ${
-            isLightContext 
-              ? "bg-rose-500/10 text-[#FF6B6B] border-rose-500/20" 
-              : "bg-rose-500/10 text-[#FF6B6B] border-[#FF6B6B]/20"
-          }`}>
-            <AlertCircle className="w-3.5 h-3.5" /> Rejected
-          </span>
-        );
-      case "modified":
-        return (
-          <span className={`${commonClasses} ${
-            isLightContext 
-              ? "bg-indigo-500/10 text-indigo-700 border-indigo-500/20" 
-              : "bg-indigo-500/10 text-indigo-400 border-indigo-500/20"
-          }`}>
-            <Edit3 className="w-3.5 h-3.5" /> Modified
-          </span>
-        );
-      default:
-        return (
-          <span className={`${commonClasses} bg-white/5 text-[#E8EAF6] border-white/10`}>
-            {status}
-          </span>
-        );
-    }
-  };
+  // Find the selected order and its flag (if any)
+  const selectedOrder = orders.find(o => o.id === selectedOrderId);
+  const selectedFlag = selectedOrder ? flags.find(f => f.order_id === selectedOrder.id && f.orders?.status === "pending_review") : null;
 
   return (
-    <div className="space-y-8 pb-12 font-sans">
-      {/* 1. TOP METRICS GRID */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="glass-panel p-5 border-[#283860] flex items-center justify-between">
-          <div>
-            <p className="text-xs font-semibold text-[#6E7191] uppercase tracking-wider">Inbound Orders</p>
-            <h3 className="text-3xl font-bold text-white mt-1">{orders.length}</h3>
-            <p className="text-xs text-emerald-400 mt-1.5 flex items-center gap-1">
-              <CheckCircle2 className="w-3.5 h-3.5 text-[#5C33F6]" /> Active Ingestion Stream
-            </p>
-          </div>
-          <div className="w-12 h-12 rounded-2xl bg-[#5C33F6]/10 border border-[#5C33F6]/20 flex items-center justify-center text-[#5C33F6]">
-            <Package className="w-6 h-6" />
-          </div>
-        </div>
-
-        <div className="glass-panel p-5 border-[#283860] flex items-center justify-between">
-          <div>
-            <p className="text-xs font-semibold text-[#6E7191] uppercase tracking-wider">Pending Audit Review</p>
-            <h3 className="text-3xl font-bold text-white mt-1">{totalFlagsCount}</h3>
-            <p className="text-xs text-[#FF6B6B] mt-1.5 flex items-center gap-1">
-              <ShieldAlert className="w-3.5 h-3.5 animate-pulse" /> Actions required
-            </p>
-          </div>
-          <div className="w-12 h-12 rounded-2xl bg-[#FF6B6B]/10 border border-[#FF6B6B]/20 flex items-center justify-center text-[#FF6B6B]">
-            <ShieldAlert className="w-6 h-6" />
-          </div>
-        </div>
-
-        <div className="glass-panel p-5 border-[#283860] flex items-center justify-between">
-          <div>
-            <p className="text-xs font-semibold text-[#6E7191] uppercase tracking-wider">Total Value Flow</p>
-            <h3 className="text-3xl font-bold text-white mt-1">₹{totalSpend.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</h3>
-            <p className="text-xs text-[#6E7191] mt-1.5">Across all order status groups</p>
-          </div>
-          <div className="w-12 h-12 rounded-2xl bg-[#5C33F6]/10 border border-[#5C33F6]/20 flex items-center justify-center text-[#5C33F6]">
-            <TrendingUp className="w-6 h-6" />
-          </div>
-        </div>
-
-        <div className="glass-panel p-5 border-[#283860] flex items-center justify-between">
-          <div>
-            <p className="text-xs font-semibold text-[#6E7191] uppercase tracking-wider">Agent Pipeline Status</p>
-            <h3 className="text-3xl font-bold text-white mt-1">Active</h3>
-            <p className="text-xs text-purple-300 mt-1.5">LangGraph State Orchestrator</p>
-          </div>
-          <div className="w-12 h-12 rounded-2xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-300">
-            <Sparkles className="w-6 h-6" />
-          </div>
-        </div>
-      </div>
-
-      {/* 3. TABS SELECTOR */}
-      <div className="border-b border-[#283860] flex items-center justify-between pb-1">
-        <div className="flex gap-6">
-          <button
-            onClick={() => setActiveTab("orders")}
-            className={`pb-3 text-sm font-bold tracking-wide transition-all border-b-2 cursor-pointer ${
-              activeTab === "orders"
-                ? "border-[#5C33F6] text-white"
-                : "border-transparent text-[#6E7191] hover:text-white"
-            }`}
-          >
-            Order Feed
-          </button>
-          <button
-            onClick={() => setActiveTab("flags")}
-            className={`pb-3 text-sm font-bold tracking-wide transition-all border-b-2 flex items-center gap-2 cursor-pointer ${
-              activeTab === "flags"
-                ? "border-[#FF6B6B] text-white"
-                : "border-transparent text-[#6E7191] hover:text-white"
-            }`}
-          >
-            Anomaly Audit Panel
-            {totalFlagsCount > 0 && (
-              <span className="bg-[#FF6B6B] text-white font-mono text-[10px] font-bold px-2 py-0.5 rounded-full animate-pulse">
-                {totalFlagsCount}
-              </span>
-            )}
-          </button>
-          <button
-            onClick={() => setActiveTab("analytics")}
-            className={`pb-3 text-sm font-bold tracking-wide transition-all border-b-2 flex items-center gap-2 cursor-pointer ${
-              activeTab === "analytics"
-                ? "border-[#5C33F6] text-white"
-                : "border-transparent text-[#6E7191] hover:text-white"
-            }`}
-          >
-            Analytics & PDF Reports
-          </button>
-        </div>
-        
-        <div className="flex items-center gap-2 mb-2 text-xs text-[#6E7191]">
-          <input
-            type="checkbox"
-            checked={autoRefresh}
-            onChange={(e) => setAutoRefresh(e.target.checked)}
-            id="autoRefresh"
-            className="rounded border-[#283860] bg-black/40 text-[#5C33F6] focus:ring-0 cursor-pointer"
-          />
-          <label htmlFor="autoRefresh" className="cursor-pointer">Auto-refresh (5s)</label>
-          <button
-            onClick={() => refreshAll(true)}
-            className="p-1 rounded bg-white/5 border border-white/10 hover:bg-white/10 text-slate-300 cursor-pointer ml-2"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin text-[#5C33F6]" : ""}`} />
-          </button>
-        </div>
-      </div>
-
-      {/* ERROR BANNER */}
-      {error && (
-        <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/20 text-[#FF6B6B] text-xs flex items-start gap-3">
-          <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
-          <div>
-            <p className="font-semibold text-white">Connection Alert</p>
-            <p className="mt-0.5 text-rose-200/90">{error}</p>
-          </div>
+    <div className="app-container">
+      {errorMessage && (
+        <div style={{ backgroundColor: "var(--color-status-red)", color: "white", padding: "8px 16px", fontSize: "12px", textAlign: "center" }}>
+          {errorMessage}
+          <button onClick={() => setErrorMessage("")} style={{ float: "right", color: "white" }}><XCircle size={14}/></button>
         </div>
       )}
-
-      {/* 4. ACTIVE TAB PANELS */}
-      {activeTab === "orders" && (
-        <div className="space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <h2 className="text-lg font-bold text-white tracking-tight flex items-center gap-2">
-              All Orders Raw/Parsed Feed
-            </h2>
-            
-            <div className="flex items-center gap-3">
-              <div className="relative">
-                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[#6E7191]" />
-                <input
-                  type="text"
-                  placeholder="Search customer, text..."
-                  value={orderSearchQuery}
-                  onChange={e => setOrderSearchQuery(e.target.value)}
-                  className="bg-black/30 border border-[#283860] rounded-xl pl-9 pr-3 py-1.5 text-xs text-white placeholder-[#6E7191] focus:outline-none focus:border-white/20 w-48 sm:w-64"
-                />
-              </div>
-
-              <div className="flex items-center gap-1 bg-black/30 p-1 rounded-xl border border-[#283860] text-xs">
-                {["all", "pending_review", "approved", "rejected", "modified"].map((tab) => (
-                  <button
-                    key={tab}
-                    onClick={() => setStatusFilter(tab)}
-                    className={`px-3 py-1 rounded-lg capitalize transition-all cursor-pointer ${
-                      statusFilter === tab
-                        ? "bg-[#5C33F6] text-white font-semibold shadow-sm"
-                        : "text-[#6E7191] hover:text-white"
-                    }`}
-                  >
-                    {tab.replace("_", " ")}
-                  </button>
-                ))}
-              </div>
-            </div>
+      
+      <div className="main-content">
+        {/* Left Pane: Orders Feed */}
+        <div className="sidebar">
+          <div className="list-header">
+            <h2>Order Feed</h2>
+            <button onClick={refreshAll} disabled={loadingOrders} style={{ color: "var(--color-text-muted)" }}>
+              <RefreshCw size={14} className={loadingOrders ? "animate-spin" : ""} />
+            </button>
           </div>
-
-          {loadingOrders ? (
-            <div className="glass-panel p-16 text-center border-[#283860]">
-              <RefreshCw className="w-8 h-8 animate-spin text-[#5C33F6] mx-auto mb-3" />
-              <p className="text-sm font-semibold text-white">Loading orders feed...</p>
-            </div>
-          ) : filteredOrders.length === 0 ? (
-            <div className="glass-panel p-16 text-center border-[#283860]">
-              <Package className="w-12 h-12 text-[#6E7191] mx-auto mb-3" />
-              <p className="text-xs text-[#6E7191]">No matching orders found.</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 gap-4">
-              {filteredOrders.map((order) => {
-                const items = order.order_items || order.raw_parsed?.items || [];
-                const custName = order.customers?.name || "Customer";
-                const rawText = order.whatsapp_messages?.raw_text || order.raw_parsed?.notes || "Raw WhatsApp text unavailable";
-
-                return (
-                  <div
-                    key={order.id}
-                    onClick={() => setSelectedOrder(order)}
-                    className="glass-panel glass-panel-hover p-5 border-[#283860] cursor-pointer transition-all group"
-                  >
-                    <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                      <div className="space-y-2 max-w-2xl">
-                        <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-xl bg-slate-800 border border-[#283860] flex items-center justify-center text-slate-300 font-semibold text-sm shrink-0">
-                            <User className="w-4 h-4 text-[#5C33F6]" />
-                          </div>
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <h4 className="font-semibold text-white group-hover:text-[#FF6B6B] transition-colors">
-                                {custName}
-                              </h4>
-                              <span className="text-[11px] font-mono text-[#6E7191] bg-white/5 px-2 py-0.5 rounded-md border border-white/5">
-                                +{order.customers?.whatsapp_phone}
-                              </span>
-                            </div>
-                            <p className="text-[11px] text-[#6E7191] mt-0.5">
-                              Spend history: ₹{order.customers?.total_spend || 0} ({order.customers?.total_orders || 0} orders)
-                            </p>
-                          </div>
-                        </div>
-
-                        <div className="bg-black/40 border border-white/5 rounded-xl px-3.5 py-2.5 text-xs text-slate-300 font-sans italic flex items-start gap-2.5">
-                          <MessageSquare className="w-3.5 h-3.5 text-[#5C33F6] shrink-0 mt-0.5" />
-                          <p className="line-clamp-2 leading-relaxed">&ldquo;{rawText}&rdquo;</p>
-                        </div>
-                      </div>
-
-                      <div className="flex-1 lg:px-4">
-                        <div className="flex flex-wrap gap-1.5">
-                          {items.slice(0, 4).map((item, idx) => (
-                            <span
-                              key={idx}
-                              className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg bg-black/40 border border-[#283860] text-[#E8EAF6] font-medium"
-                            >
-                              <span className="font-bold text-[#FF6B6B]">{item.quantity} {item.unit || "unit"}</span>
-                              <span className="text-slate-300">{item.product_name_raw}</span>
-                            </span>
-                          ))}
-                          {items.length > 4 && (
-                            <span className="inline-flex items-center text-xs px-2 py-1 rounded-lg bg-white/5 border border-white/10 text-slate-400 font-mono">
-                              +{items.length - 4} more
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="flex items-center justify-between lg:justify-end gap-6 border-t lg:border-t-0 pt-3 lg:pt-0 border-white/5">
-                        <div className="text-left lg:text-right">
-                          <p className="text-[10px] uppercase font-semibold text-[#6E7191] tracking-wider">Total Value</p>
-                          <p className="text-lg font-bold text-white mt-0.5">
-                            ₹{(order.total_value || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                          </p>
-                        </div>
-
-                        <div className="flex items-center gap-3">
-                          {getStatusBadge(order.status)}
-                          <div className="w-8 h-8 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-slate-400 group-hover:bg-[#5C33F6] group-hover:text-white group-hover:border-[#5C33F6] transition-all">
-                            <ChevronRight className="w-4 h-4" />
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
-
-      {activeTab === "flags" && (
-        <div className="space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <h2 className="text-lg font-bold text-white tracking-tight flex items-center gap-2">
-                Anomaly Audit Reviews
-              </h2>
-              <p className="text-xs text-[#6E7191]">
-                Orders audited by the LangGraph agent. Use actions to resolve outstanding flags.
-              </p>
-            </div>
-            
-            <div className="flex items-center gap-3">
-              <div className="relative">
-                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[#6E7191]" />
-                <input
-                  type="text"
-                  placeholder="Search flagged reviews..."
-                  value={flagSearchQuery}
-                  onChange={e => setFlagSearchQuery(e.target.value)}
-                  className="bg-black/30 border border-[#283860] rounded-xl pl-9 pr-3 py-1.5 text-xs text-white placeholder-[#6E7191] focus:outline-none focus:border-white/20 w-48 sm:w-64"
-                />
-              </div>
-
-              <div className="flex items-center gap-1 bg-black/30 p-1 rounded-xl border border-[#283860] text-xs">
-                {(["pending", "resolved", "all"] as const).map((tab) => (
-                  <button
-                    key={tab}
-                    onClick={() => setFlagStatusFilter(tab)}
-                    className={`px-3 py-1 rounded-lg capitalize transition-all cursor-pointer ${
-                      flagStatusFilter === tab
-                        ? "bg-[#FF6B6B] text-white font-semibold shadow-sm"
-                        : "text-[#6E7191] hover:text-white"
-                    }`}
-                  >
-                    {tab}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {loadingFlags ? (
-            <div className="glass-panel p-16 text-center border-[#283860]">
-              <RefreshCw className="w-8 h-8 animate-spin text-[#FF6B6B] mx-auto mb-3" />
-              <p className="text-sm font-semibold text-white">Loading review panel...</p>
-            </div>
-          ) : filteredFlags.length === 0 ? (
-            <div className="glass-panel p-16 text-center border-[#283860]">
-              <CheckCircle2 className="w-12 h-12 text-[#FF6B6B] mx-auto mb-3 stroke-[1.5]" />
-              <h3 className="text-base font-semibold text-white">Queue completely cleared!</h3>
-              <p className="text-xs text-[#6E7191] mt-1">No orders currently flag-restricted.</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 gap-6">
-              {filteredFlags.map((flag) => {
-                const order = flag.orders;
-                if (!order) return null;
-                const items = order.order_items || order.raw_parsed?.items || [];
-                const rawText = order.whatsapp_messages?.raw_text || order.raw_parsed?.notes || "";
-                const sigs = flag.raw_signals || {};
-                const isPending = order.status === "pending_review";
-                
-                return (
-                  <div
-                    key={flag.id}
-                    className={`glass-panel p-6 border transition-all space-y-6 relative overflow-hidden ${
-                      isPending ? "border-[#283860]" : "border-emerald-500/20 bg-emerald-950/5"
-                    }`}
-                  >
-                    {/* Header: Customer Name and Severity */}
-                    <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#283860] pb-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-slate-800 border border-[#283860] flex items-center justify-center text-rose-400 shrink-0">
-                          <ShieldAlert className="w-5 h-5 text-[#FF6B6B]" />
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <h4 className="font-bold text-white text-base">
-                              {order.customers?.name || "Customer"}
-                            </h4>
-                            {getStatusBadge(order.status)}
-                          </div>
-                          <p className="text-xs text-[#6E7191] font-mono mt-0.5">
-                            Order Ref: {order.id.slice(0, 8)} • +{order.customers?.whatsapp_phone}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2.5">
-                        <span className="text-xs text-[#6E7191]">Severity:</span>
-                        {getSeverityBadge(flag.severity)}
-                        <span className="text-[11px] font-mono text-slate-500 bg-white/5 px-2 py-0.5 rounded border border-white/5">
-                          Conf: {(flag.confidence_score * 100).toFixed(0)}%
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Split content: Left AI reasoning, Right signals & Items */}
-                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                      
-                      {/* Left: LLM reasoning box & recommended action */}
-                      <div className="lg:col-span-7 space-y-4">
-                        <div className="space-y-2">
-                          <span className="text-xs font-semibold text-[#6E7191] uppercase tracking-wider">AI Audit Reasoning</span>
-                          <div className="p-4 rounded-2xl bg-[#FF6B6B]/10 border border-[#FF6B6B]/20 text-sm text-slate-200 leading-relaxed font-sans">
-                            {flag.llm_reasoning}
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="bg-black/30 p-3.5 rounded-2xl border border-white/5">
-                            <span className="text-[10px] font-semibold uppercase text-[#6E7191] tracking-wider block">Recommended Action</span>
-                            <span className="inline-block mt-1.5 px-3 py-1 rounded-xl text-xs font-semibold uppercase tracking-wider bg-slate-800 text-slate-300 border border-white/10">
-                              {flag.recommended_action.replace(/_/g, " ")}
-                            </span>
-                          </div>
-                          <div className="bg-black/30 p-3.5 rounded-2xl border border-white/5">
-                            <span className="text-[10px] font-semibold uppercase text-[#6E7191] tracking-wider block">Total Order Value</span>
-                            <span className="block mt-1 text-lg font-bold text-white">
-                              ₹{(order.total_value || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Raw Message Preview */}
-                        <div className="p-3.5 rounded-2xl bg-black/40 border border-white/5 text-xs">
-                          <span className="text-[#6E7191] font-semibold block mb-1">Inbound WhatsApp Body:</span>
-                          <span className="italic text-slate-300">&ldquo;{rawText}&rdquo;</span>
-                        </div>
-                      </div>
-
-                      {/* Right: Detected statistical signals & Item breakdown */}
-                      <div className="lg:col-span-5 space-y-4">
-                        <div className="space-y-2">
-                          <span className="text-xs font-semibold text-[#6E7191] uppercase tracking-wider">Audit Alert Signals</span>
-                          <div className="space-y-2">
-                            {/* Z-score check */}
-                            {sigs.value_zscore !== undefined && (
-                              <div className="flex items-center justify-between p-2.5 rounded-xl bg-black/30 border border-white/5 text-xs">
-                                <span className="text-slate-400">Value Z-score Spike</span>
-                                <span className={`font-mono font-bold ${sigs.value_spike ? "text-[#FF6B6B]" : "text-slate-300"}`}>
-                                  {sigs.value_zscore} {sigs.value_spike ? "🚨 (>2.5)" : "✓"}
-                                </span>
-                              </div>
-                            )}
-
-                            {/* Hour check */}
-                            <div className="flex items-center justify-between p-2.5 rounded-xl bg-black/30 border border-white/5 text-xs">
-                              <span className="text-slate-400">Ordering Hour Check</span>
-                              <span className={`font-mono font-bold ${sigs.unusual_time ? "text-amber-400" : "text-[#5C33F6]"}`}>
-                                {sigs.order_hour ? `${sigs.order_hour}:00` : "Unknown"} {sigs.unusual_time ? "⚠️ Unusual" : "✓ Normal"}
-                              </span>
-                            </div>
-
-                            {/* Inventory Risk indicators */}
-                            {sigs.inventory?.inventory_risks && sigs.inventory.inventory_risks.length > 0 && (
-                              <div className="p-2.5 rounded-xl bg-[#FF6B6B]/10 border border-[#FF6B6B]/20 text-xs space-y-1">
-                                <span className="text-[#FF6B6B] font-bold flex items-center gap-1.5">
-                                  <AlertTriangle className="w-3.5 h-3.5" /> Stock Shortfall Flagged
-                                </span>
-                                {sigs.inventory.inventory_risks.map((risk: any, i: number) => (
-                                  <div key={i} className="text-[11px] text-slate-300">
-                                    • {risk.product}: requested {risk.requested}, available {risk.available} 
-                                    {risk.shortfall > 0 && <span className="text-[#FF6B6B] font-bold ml-1">({risk.shortfall} shortage)</span>}
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-
-                            {/* New items check */}
-                            {sigs.new_items && sigs.new_items.length > 0 && (
-                              <div className="p-2.5 rounded-xl bg-black/30 border border-white/5 text-xs space-y-1">
-                                <div className="flex items-center justify-between">
-                                  <span className="text-slate-400">New Items Detected</span>
-                                  <span className="text-amber-400 font-bold font-mono">+{sigs.new_items.length} item(s)</span>
-                                </div>
-                                <div className="flex flex-wrap gap-1 mt-1.5">
-                                  {sigs.new_items.map((it: string, i: number) => (
-                                    <span key={i} className="text-[10px] bg-amber-500/10 text-amber-300 px-2 py-0.5 rounded border border-amber-500/20">{it}</span>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Quantity spikes */}
-                            {sigs.item_quantity_spikes && sigs.item_quantity_spikes.length > 0 && (
-                              <div className="p-2.5 rounded-xl bg-black/30 border border-white/5 text-xs space-y-1.5">
-                                <span className="text-[#FF6B6B] font-semibold block">Quantity Spikes:</span>
-                                {sigs.item_quantity_spikes.map((sp: any, i: number) => (
-                                  <div key={i} className="flex justify-between items-center text-[11px] border-b border-white/5 pb-1 last:border-0 last:pb-0">
-                                    <span className="text-slate-400 truncate max-w-[150px]">{sp.item}</span>
-                                    <span className="text-[#FF6B6B] font-mono font-bold">
-                                      {sp.ordered_qty}x (Avg: {sp.avg_qty}x)
-                                    </span>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Order items */}
-                        <div className="space-y-2">
-                          <span className="text-xs font-semibold text-[#6E7191] uppercase tracking-wider block">Line Items Ordered ({items.length})</span>
-                          <div className="flex flex-wrap gap-1.5">
-                            {items.map((item, idx) => (
-                              <span
-                                key={idx}
-                                className="inline-flex items-center text-xs px-2.5 py-1 rounded-lg bg-[#1A2744] border border-[#283860] text-slate-200"
-                              >
-                                <span className="font-bold text-[#FF6B6B] mr-1">{item.quantity} {item.unit || "unit"}</span>
-                                {item.product_name_raw}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Bottom Actions Row */}
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-4 border-t border-[#283860]">
-                      <div className="text-xs text-[#6E7191] flex items-center gap-1">
-                        <span>Audited using model:</span>
-                        <code className="text-slate-400 font-mono">{flag.model_used}</code>
-                      </div>
-
-                      {isPending ? (
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => {
-                              setDecisionFlag(flag);
-                              setDecisionNotes("");
-                            }}
-                            className="px-4 py-2 bg-[#FF6B6B]/10 hover:bg-[#FF6B6B]/20 border border-[#FF6B6B]/30 text-[#FF6B6B] rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
-                          >
-                            <ThumbsDown className="w-3.5 h-3.5" /> Reject Order
-                          </button>
-                          
-                          <button
-                            onClick={() => startModify(flag)}
-                            className="px-4 py-2 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/30 text-indigo-300 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
-                          >
-                            <Edit3 className="w-3.5 h-3.5" /> Modify Quantities
-                          </button>
-
-                          <button
-                            onClick={() => handleDecision(flag.id, "approved")}
-                            className="px-5 py-2 bg-[#5C33F6] hover:bg-[#4B29D4] text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-lg shadow-[#5C33F6]/20 cursor-pointer"
-                          >
-                            <ThumbsUp className="w-3.5 h-3.5" /> Approve Order
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="text-xs text-emerald-400 font-semibold bg-emerald-500/10 px-3 py-1.5 rounded-xl border border-emerald-500/20 flex items-center gap-1">
-                          ✓ This audit flag has been processed and closed.
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
-
-      {activeTab === "analytics" && (
-        <div className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            
-            {/* Download PDF report */}
-            <div className="glass-panel p-6 border-[#283860] space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-xl bg-[#5C33F6]/10 border border-[#5C33F6]/20 text-[#5C33F6]">
-                  <FileText className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-white">Generate Audit Summary PDF</h3>
-                  <p className="text-xs text-[#6E7191]">Download a ReportLab compiled document of orders, statuses, and AI signals.</p>
-                </div>
-              </div>
-
-              <form onSubmit={handleDownloadReport} className="space-y-4 pt-2">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[11px] font-semibold text-[#6E7191] mb-1">Start Date</label>
-                    <div className="relative">
-                      <input
-                        type="date"
-                        value={startDate}
-                        onChange={e => setStartDate(e.target.value)}
-                        className="w-full bg-black/40 border border-[#283860] rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-[#5C33F6]/50"
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-semibold text-[#6E7191] mb-1">End Date</label>
-                    <div className="relative">
-                      <input
-                        type="date"
-                        value={endDate}
-                        onChange={e => setEndDate(e.target.value)}
-                        className="w-full bg-black/40 border border-[#283860] rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-[#5C33F6]/50"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={reportDownloading}
-                  className="w-full bg-[#5C33F6] hover:bg-[#4B29D4] disabled:opacity-50 text-white font-bold text-xs py-2.5 rounded-xl flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer"
-                >
-                  {reportDownloading ? (
-                    <>
-                      <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Compiling Report...
-                    </>
-                  ) : (
-                    <>
-                      <Download className="w-4 h-4" /> Download Audit PDF
-                    </>
-                  )}
-                </button>
-              </form>
-            </div>
-
-            {/* Inventory shortage stats */}
-            <div className="glass-panel p-6 border-[#283860] space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-xl bg-[#FF6B6B]/10 border border-[#FF6B6B]/20 text-[#FF6B6B]">
-                  <AlertTriangle className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-white">Active Stock Shortfalls</h3>
-                  <p className="text-xs text-[#6E7191]">Real-time alerts where order quantities exceed current manual stock levels.</p>
-                </div>
-              </div>
-
-              <div className="max-h-[160px] overflow-y-auto pr-1 space-y-2">
-                {inventoryAlerts.length === 0 ? (
-                  <div className="p-6 text-center text-xs text-[#6E7191] bg-white/5 rounded-2xl border border-white/5">
-                    ✓ All inventory stocks fully cleared.
-                  </div>
-                ) : (
-                  inventoryAlerts.map((risk, idx) => (
-                    <div key={idx} className="flex justify-between items-center p-3 rounded-xl bg-black/30 border border-white/5 text-xs">
-                      <div>
-                        <span className="font-semibold text-white block">{risk.product}</span>
-                        <span className="text-[10px] text-[#6E7191]">Requested by: {risk.customer}</span>
-                      </div>
-                      <div className="text-right">
-                        <span className="text-[#FF6B6B] font-bold block">-{risk.shortfall} Units</span>
-                        <span className="text-[10px] text-[#6E7191]">In Stock: {risk.available}</span>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-
-          </div>
-        </div>
-      )}
-
-      {/* 5. DECISION DRAWER / MODAL (APPROVE / REJECT / MODIFY CONTEXTS) */}
-      {decisionFlag && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
-          <div className="glass-panel rounded-3xl max-w-xl w-full border border-white/15 p-6 space-y-6 shadow-2xl relative">
-            <div className="flex items-start justify-between border-b border-white/10 pb-4">
-              <div>
-                <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                  {isModifying ? "Modify Order Items" : "Confirm Audit Decision"}
-                </h3>
-                <p className="text-xs text-[#6E7191] mt-0.5">
-                  Actioning flag review for client: {decisionFlag.orders?.customers?.name}
-                </p>
-              </div>
-              <button
-                onClick={() => {
-                  setDecisionFlag(null);
-                  setIsModifying(false);
-                }}
-                className="p-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition-all cursor-pointer"
+          
+          <div className="filter-tabs">
+            {["all", "pending", "approved", "rejected"].map(tab => (
+              <div
+                key={tab}
+                className={`filter-tab ${statusFilter === tab ? "active" : ""}`}
+                onClick={() => setStatusFilter(tab)}
               >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* If Modifying layout */}
-            {isModifying ? (
-              <div className="space-y-4">
-                <span className="text-xs font-semibold text-[#6E7191] uppercase tracking-wider block">Line Item Quantity Adjustments</span>
-                
-                <div className="space-y-3 max-h-[35vh] overflow-y-auto pr-1">
-                  {modItems.map((item, idx) => (
-                    <div key={idx} className="flex items-center justify-between p-3.5 rounded-2xl bg-black/40 border border-white/5 gap-4">
-                      <div className="truncate flex-1">
-                        <p className="text-xs font-bold text-white truncate">{item.product_name_raw}</p>
-                        <p className="text-[10px] text-[#6E7191] mt-0.5">Unit size: {item.unit || "unit"}</p>
-                      </div>
-                      
-                      <div className="flex items-center gap-2 shrink-0">
-                        <button
-                          type="button"
-                          onClick={() => updateModQty(idx, Math.max(0, item.quantity - 1))}
-                          className="w-7 h-7 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center font-bold text-slate-300 hover:bg-white/10"
-                        >
-                          -
-                        </button>
-                        <input
-                          type="number"
-                          value={item.quantity}
-                          onChange={(e) => updateModQty(idx, Math.max(0, parseFloat(e.target.value) || 0))}
-                          className="w-16 bg-black/60 border border-white/10 rounded-lg py-1 px-2 text-center text-xs text-white font-mono font-bold"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => updateModQty(idx, item.quantity + 1)}
-                          className="w-7 h-7 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center font-bold text-slate-300 hover:bg-white/10"
-                        >
-                          +
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="flex justify-between items-center bg-white/5 p-3 rounded-2xl border border-white/5 text-xs font-semibold">
-                  <span className="text-slate-400">Total Adjusted Estimated Value:</span>
-                  <span className="text-indigo-400 text-sm font-bold">₹{modTotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
-                </div>
+                {tab.charAt(0).toUpperCase() + tab.slice(1)}
               </div>
-            ) : (
-              <div className="space-y-4">
-                <div className="p-4 rounded-2xl bg-[#FF6B6B]/15 border border-[#FF6B6B]/30 text-xs text-[#FF6B6B]">
-                  <span className="font-bold text-white block mb-0.5">Review Warning</span>
-                  This will mark the order status as rejected. It will remain logged but won't be calculated into successful metrics groups.
-                </div>
+            ))}
+          </div>
+          
+          <div className="content-area">
+            {orders.length === 0 && !loadingOrders && (
+              <div style={{ padding: 24, textAlign: "center", color: "var(--color-text-muted)" }}>
+                No orders found.
               </div>
             )}
-
-            {/* Common Notes field */}
-            <div className="space-y-2">
-              <label className="block text-xs font-semibold text-[#6E7191] uppercase tracking-wider">Auditing Notes / Reason</label>
-              <textarea
-                value={decisionNotes}
-                onChange={e => setDecisionNotes(e.target.value)}
-                rows={3}
-                placeholder={isModifying ? "Explain why you adjusted these quantities..." : "Provide audit rejection notes..."}
-                className="w-full bg-black/40 border border-white/10 rounded-2xl p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-white/20"
-              />
-            </div>
-
-            <div className="flex items-center justify-end gap-3 pt-4 border-t border-white/10">
-              <button
-                onClick={() => {
-                  setDecisionFlag(null);
-                  setIsModifying(false);
-                }}
-                className="bg-white/5 hover:bg-white/10 text-slate-300 text-xs font-medium px-5 py-2.5 rounded-xl transition-all cursor-pointer"
-              >
-                Cancel
-              </button>
+            {orders.map((order) => {
+              const hasFlag = flags.some(f => f.order_id === order.id && order.status === "pending_review");
               
-              <button
-                onClick={() => {
-                  if (isModifying) {
-                    handleDecision(decisionFlag.id, "modified", {
-                      total_value: modTotal,
-                      items: modItems
-                    });
-                  } else {
-                    handleDecision(decisionFlag.id, "rejected");
-                  }
-                }}
-                disabled={decisionLoading}
-                className={`text-white text-xs font-bold px-5 py-2.5 rounded-xl transition-all flex items-center gap-1.5 shadow-lg cursor-pointer ${
-                  isModifying 
-                    ? "bg-indigo-600 hover:bg-indigo-500 shadow-indigo-500/10" 
-                    : "bg-[#FF6B6B] hover:bg-[#FF6B6B]/90 shadow-[#FF6B6B]/15"
-                }`}
-              >
-                {decisionLoading ? (
-                  <>
-                    <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Recording...
-                  </>
-                ) : (
-                  <>
-                    {isModifying ? "Submit Modified Order" : "Confirm Rejection"}
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 6. GENERAL ORDER DETAIL MODAL - STYLED AS A WHITE PITCH CANVAS SLIDE */}
-      {selectedOrder && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
-          <div className="bg-white rounded-3xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-8 space-y-6 shadow-2xl relative border border-[#DDE2F0] text-[#1A1A2E]">
-            
-            {/* Modal Header */}
-            <div className="flex items-start justify-between border-b border-[#DDE2F0] pb-4">
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="text-xl font-bold tracking-tight text-[#1A1A2E]">Order Detail Exhibit</h3>
-                  {getStatusBadge(selectedOrder.status, true)}
+              return (
+                <div 
+                  key={order.id} 
+                  className={`card ${selectedOrderId === order.id ? "selected" : ""}`}
+                  onClick={() => setSelectedOrderId(order.id)}
+                >
+                  <div className="card-header">
+                    <div>
+                      <div className="card-title">{order.customers?.name || "Unknown Customer"}</div>
+                      <div className="card-subtitle">Via {order.channel} • {new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      <div className="card-amount">₹{(order.total_value || 0).toLocaleString()}</div>
+                      <div className={`status ${order.status}`}>{order.status.replace("_", " ")}</div>
+                    </div>
+                  </div>
+                  {hasFlag && (
+                    <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 4, color: "var(--color-status-amber)", fontSize: 11, fontWeight: 600 }}>
+                      <AlertTriangle size={12} /> ANOMALY DETECTED
+                    </div>
+                  )}
                 </div>
-                <p className="text-[11px] text-[#6E7191] font-mono mt-1">Ref ID: {selectedOrder.id}</p>
-              </div>
-              <button
-                onClick={() => setSelectedOrder(null)}
-                className="p-1.5 rounded-xl bg-[#F8F9FC] hover:bg-[#EEF0F8] text-[#6E7191] hover:text-[#1A1A2E] transition-all cursor-pointer border border-[#DDE2F0]"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Customer profile block */}
-            <div className="grid grid-cols-2 gap-6 p-5 rounded-2xl bg-[#F8F9FC] border border-[#DDE2F0]">
-              <div>
-                <p className="text-[10px] font-bold text-[#6E7191] uppercase tracking-wider font-mono">Client Details</p>
-                <p className="text-base font-bold text-[#1A1A2E] mt-1">{selectedOrder.customers?.name || "Customer"}</p>
-                <p className="text-xs font-mono text-[#5C33F6] mt-0.5 flex items-center gap-1 font-semibold">
-                  <PhoneCall className="w-3 h-3 text-[#5C33F6]" /> +{selectedOrder.customers?.whatsapp_phone}
-                </p>
-              </div>
-              <div>
-                <p className="text-[10px] font-bold text-[#6E7191] uppercase tracking-wider font-mono">Receipt timestamp</p>
-                <p className="text-xs text-[#1A1A2E] mt-1.5 font-medium">
-                  {new Date(selectedOrder.created_at || selectedOrder.order_time).toLocaleString()}
-                </p>
-                <p className="text-[10px] text-[#6E7191] mt-0.5">Pipeline status: <span className="font-semibold">{selectedOrder.status}</span></p>
-              </div>
-            </div>
-
-            {/* Raw Inbound Message block */}
-            <div className="space-y-2">
-              <p className="text-xs font-bold uppercase tracking-wider text-[#6E7191] flex items-center gap-1.5">
-                <MessageSquare className="w-3.5 h-3.5 text-[#5C33F6]" /> Inbound Text
-              </p>
-              <div className="p-4 rounded-2xl bg-[#F8F9FC] border border-[#DDE2F0] text-sm text-[#1A1A2E] font-sans leading-relaxed italic">
-                &ldquo;{selectedOrder.whatsapp_messages?.raw_text || selectedOrder.raw_parsed?.notes || "No raw text recorded"}&rdquo;
-              </div>
-            </div>
-
-            {/* Extracted Line Items table */}
-            <div className="space-y-2">
-              <p className="text-xs font-bold uppercase tracking-wider text-[#6E7191] flex items-center gap-1.5">
-                <Package className="w-3.5 h-3.5 text-[#5C33F6]" /> AI Extracted Parameters
-              </p>
-              <div className="rounded-2xl overflow-hidden border border-[#DDE2F0] bg-white">
-                <table className="w-full text-left border-collapse text-xs">
-                  <thead>
-                    <tr className="border-b border-[#DDE2F0] bg-[#F8F9FC] text-[#6E7191] font-bold">
-                      <th className="p-3">Item Description</th>
-                      <th className="p-3 text-center">Quantity</th>
-                      <th className="p-3 text-center">Unit</th>
-                      <th className="p-3 text-right">Unit Price</th>
-                      <th className="p-3 text-right">Line Total</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[#DDE2F0] text-[#1A1A2E]">
-                    {(selectedOrder.order_items || selectedOrder.raw_parsed?.items || []).map((item, idx) => (
-                      <tr key={idx} className="hover:bg-[#F8F9FC]/50">
-                        <td className="p-3 font-semibold text-[#1A1A2E]">{item.product_name_raw}</td>
-                        <td className="p-3 text-center font-bold text-[#5C33F6]">{item.quantity}</td>
-                        <td className="p-3 text-center font-mono text-[#6E7191]">{item.unit || "unit"}</td>
-                        <td className="p-3 text-right text-[#6E7191]">
-                          {item.unit_price ? `₹${item.unit_price.toFixed(2)}` : "—"}
-                        </td>
-                        <td className="p-3 text-right font-bold text-[#1A1A2E]">
-                          {item.line_total ? `₹${item.line_total.toFixed(2)}` : (item.unit_price ? `₹${(item.quantity * item.unit_price).toFixed(2)}` : "—")}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot>
-                    <tr className="border-t border-[#DDE2F0] bg-[#F8F9FC] font-bold text-[#1A1A2E]">
-                      <td colSpan={4} className="p-3 text-right">Aggregate Estimated Value:</td>
-                      <td className="p-3 text-right text-[#5C33F6] text-sm">
-                        ₹{(selectedOrder.total_value || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                      </td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-            </div>
-
-            {/* Modal Footer */}
-            <div className="flex items-center justify-between pt-4 border-t border-[#DDE2F0]">
-              <span className="text-[11px] text-[#6E7191] leading-relaxed">
-                Pitch design standard canvas framing applied.
-              </span>
-              <button
-                onClick={() => setSelectedOrder(null)}
-                className="bg-[#1A1A2E] hover:bg-[#1A1A2E]/90 text-white text-xs font-bold px-6 py-2.5 rounded-xl transition-all cursor-pointer"
-              >
-                Close View
-              </button>
-            </div>
+              );
+            })}
           </div>
         </div>
-      )}
+
+        {/* Right Pane: Details & Audit */}
+        <div className="content-area" style={{ borderLeft: "1px solid var(--color-border-subtle)" }}>
+          {selectedOrder ? (
+            <div>
+              <div className="detail-header">
+                <div>
+                  <h1 style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    {selectedOrder.customers?.name || "Customer Details"}
+                    <span className={`status ${selectedOrder.status}`}>{selectedOrder.status.replace("_", " ")}</span>
+                  </h1>
+                  <div style={{ color: "var(--color-text-muted)", marginTop: 4, display: "flex", gap: 16 }}>
+                    <span>Order ID: <span className="mono">{selectedOrder.id.split("-")[0]}</span></span>
+                    <span>Channel: {selectedOrder.channel}</span>
+                    <span>{new Date(selectedOrder.created_at).toLocaleString()}</span>
+                  </div>
+                </div>
+                <div className="card-amount" style={{ fontSize: 24 }}>
+                  ₹{(selectedOrder.total_value || 0).toLocaleString()}
+                </div>
+              </div>
+
+              <div className="detail-body">
+                {/* Active Anomaly Flag */}
+                {selectedFlag && (
+                  <div className="anomaly-banner">
+                    <h4><AlertTriangle size={16} /> Audit Required</h4>
+                    <p>{selectedFlag.llm_reasoning}</p>
+                    
+                    <div className="action-bar" style={{ marginTop: 16, backgroundColor: "rgba(0,0,0,0.2)", border: "none" }}>
+                      <input 
+                        type="text" 
+                        className="input-field" 
+                        placeholder="Add review notes (optional)..." 
+                        value={decisionNotes}
+                        onChange={(e) => setDecisionNotes(e.target.value)}
+                        style={{ backgroundColor: "rgba(0,0,0,0.3)" }}
+                      />
+                      <div className="action-buttons">
+                        <button 
+                          className="btn btn-success" 
+                          disabled={decisionLoading}
+                          onClick={() => handleDecision(selectedFlag.id, "approved")}
+                        >
+                          <CheckCircle2 size={16} /> Force Approve
+                        </button>
+                        <button 
+                          className="btn btn-danger" 
+                          disabled={decisionLoading}
+                          onClick={() => handleDecision(selectedFlag.id, "rejected")}
+                        >
+                          <XCircle size={16} /> Reject Order
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Raw Input vs Parsed */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
+                  <div>
+                    <div className="section-title">Raw Message</div>
+                    <div style={{ padding: 16, backgroundColor: "var(--color-bg-surface)", borderRadius: "var(--radius-md)", border: "1px solid var(--color-border-subtle)", whiteSpace: "pre-wrap", fontSize: 13, color: "var(--color-text-muted)" }}>
+                      {selectedOrder.raw_input || "No raw text available."}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="section-title">Parsed Items</div>
+                    <div style={{ border: "1px solid var(--color-border-subtle)", borderRadius: "var(--radius-md)", overflow: "hidden" }}>
+                      <table className="data-table">
+                        <thead style={{ backgroundColor: "var(--color-bg-surface)" }}>
+                          <tr>
+                            <th>Item</th>
+                            <th style={{ textAlign: "right" }}>Qty</th>
+                            <th style={{ textAlign: "right" }}>Price</th>
+                            <th style={{ textAlign: "right" }}>Total</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(selectedOrder.order_items || selectedOrder.parsed_json?.items || []).map((item: any, i: number) => (
+                            <tr key={i}>
+                              <td>{item.product_name_raw}</td>
+                              <td style={{ textAlign: "right" }}>{item.quantity} {item.unit}</td>
+                              <td style={{ textAlign: "right" }}>₹{item.unit_price || 0}</td>
+                              <td style={{ textAlign: "right", fontWeight: 500 }}>₹{item.line_total || (item.quantity * item.unit_price) || 0}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", color: "var(--color-text-muted)" }}>
+              <FileText size={48} style={{ opacity: 0.2, marginBottom: 16 }} />
+              <p>Select an order from the feed to view details and resolve anomalies.</p>
+              
+              <button className="btn btn-outline" style={{ marginTop: 24 }} onClick={handleDownloadReport} disabled={reportDownloading}>
+                <Download size={14} /> {reportDownloading ? "Generating..." : "Download Daily Report"}
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
