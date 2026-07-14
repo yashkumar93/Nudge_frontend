@@ -9,8 +9,10 @@ import {
   AlertTriangle,
   Clock,
   Download,
-  FileText
+  FileText,
+  BarChart2
 } from "lucide-react";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -56,6 +58,10 @@ export default function NudgeDashboard() {
   const [loadingFlags, setLoadingFlags] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   
+  // Analytics State
+  const [activeTab, setActiveTab] = useState<"ledger" | "analytics">("ledger");
+  const [analyticsData, setAnalyticsData] = useState<any>(null);
+  
   // Selection
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   
@@ -98,10 +104,23 @@ export default function NudgeDashboard() {
     }
   }, []);
 
+  const fetchAnalytics = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/analytics`);
+      if (res.ok) {
+        const data = await res.json();
+        setAnalyticsData(data);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  }, []);
+
   const refreshAll = useCallback(() => {
     fetchOrders();
     fetchFlags();
-  }, [fetchOrders, fetchFlags]);
+    fetchAnalytics();
+  }, [fetchOrders, fetchFlags, fetchAnalytics]);
 
   useEffect(() => {
     refreshAll();
@@ -112,6 +131,7 @@ export default function NudgeDashboard() {
     const interval = setInterval(() => {
       fetchOrders();
       fetchFlags();
+      // Optional: fetchAnalytics() too if you want live updates, but usually not needed as frequently
     }, 5000);
     return () => clearInterval(interval);
   }, [fetchOrders, fetchFlags]);
@@ -181,7 +201,94 @@ export default function NudgeDashboard() {
           <button onClick={() => setErrorMessage("")} style={{ float: "right", color: "white" }}><XCircle size={14}/></button>
         </div>
       )}
+
+      <div style={{ padding: "16px 24px", borderBottom: "1px solid var(--color-border-subtle)", display: "flex", gap: 12 }}>
+        <button 
+          className={`pill ${activeTab === "ledger" ? "active" : ""}`} 
+          onClick={() => setActiveTab("ledger")}
+        >
+          <FileText size={14} style={{ marginRight: 6 }}/> Audit Ledger
+        </button>
+        <button 
+          className={`pill ${activeTab === "analytics" ? "active" : ""}`} 
+          onClick={() => setActiveTab("analytics")}
+        >
+          <BarChart2 size={14} style={{ marginRight: 6 }}/> Analytics
+        </button>
+      </div>
       
+      {activeTab === "analytics" ? (
+        <div style={{ padding: 24, overflowY: "auto", flex: 1 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, marginBottom: 24 }}>
+            <div className="card" style={{ padding: 20 }}>
+              <div style={{ color: "var(--color-text-muted)", fontSize: 13 }}>Total Orders</div>
+              <div style={{ fontSize: 24, fontWeight: 600, marginTop: 8 }}>{analyticsData?.total_orders || 0}</div>
+            </div>
+            <div className="card" style={{ padding: 20 }}>
+              <div style={{ color: "var(--color-text-muted)", fontSize: 13 }}>Total Revenue</div>
+              <div style={{ fontSize: 24, fontWeight: 600, marginTop: 8 }}>₹{(analyticsData?.total_revenue || 0).toLocaleString()}</div>
+            </div>
+            <div className="card" style={{ padding: 20 }}>
+              <div style={{ color: "var(--color-text-muted)", fontSize: 13 }}>Approval Rate</div>
+              <div style={{ fontSize: 24, fontWeight: 600, marginTop: 8 }}>
+                {analyticsData ? Math.round((analyticsData.decisions.approved / ((analyticsData.decisions.approved + analyticsData.decisions.rejected) || 1)) * 100) : 0}%
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 16 }}>
+            <div className="card" style={{ padding: 20 }}>
+              <h3 style={{ marginBottom: 20, fontSize: 14 }}>Order Volume Trend</h3>
+              <div style={{ height: 300 }}>
+                {analyticsData && (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={analyticsData.volume_trend}>
+                      <XAxis dataKey="date" stroke="var(--color-text-muted)" fontSize={12} tickLine={false} axisLine={false} />
+                      <YAxis stroke="var(--color-text-muted)" fontSize={12} tickLine={false} axisLine={false} />
+                      <Tooltip cursor={{ fill: "var(--color-bg-surface)" }} contentStyle={{ backgroundColor: "var(--color-bg-elevated)", border: "1px solid var(--color-border-subtle)", borderRadius: 8 }} />
+                      <Bar dataKey="orders" fill="var(--color-text-primary)" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+            </div>
+            <div className="card" style={{ padding: 20 }}>
+              <h3 style={{ marginBottom: 20, fontSize: 14 }}>Anomaly Severity</h3>
+              <div style={{ height: 260 }}>
+                {analyticsData && (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={analyticsData.severities.filter((s: any) => s.value > 0)}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={60}
+                        outerRadius={80}
+                        paddingAngle={5}
+                        dataKey="value"
+                      >
+                        {analyticsData.severities.map((entry: any, index: number) => {
+                          const colors: any = { Low: "#3f3f46", Medium: "#eab308", High: "#f97316", Critical: "#ef4444" };
+                          return <Cell key={`cell-${index}`} fill={colors[entry.name] || "#ffffff"} />;
+                        })}
+                      </Pie>
+                      <Tooltip contentStyle={{ backgroundColor: "var(--color-bg-elevated)", border: "1px solid var(--color-border-subtle)", borderRadius: 8 }} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                )}
+                <div style={{ display: "flex", justifyContent: "center", gap: 12, flexWrap: "wrap", marginTop: 12 }}>
+                  {analyticsData?.severities.map((s: any) => (
+                    <div key={s.name} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: "var(--color-text-muted)" }}>
+                      <div style={{ width: 8, height: 8, borderRadius: "50%", backgroundColor: s.name === "Low" ? "#3f3f46" : s.name === "Medium" ? "#eab308" : s.name === "High" ? "#f97316" : "#ef4444" }}></div>
+                      {s.name} ({s.value})
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : (
       <div className="main-content">
         {/* Left Pane: Orders Feed */}
         <div className="sidebar">
@@ -352,6 +459,7 @@ export default function NudgeDashboard() {
           )}
         </div>
       </div>
+      )}
     </div>
   );
 }
