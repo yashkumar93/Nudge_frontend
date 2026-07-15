@@ -31,7 +31,7 @@ export default function ReportsPage() {
       const downloadUrl = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = downloadUrl;
-      a.download = `nudge_report_${startDate}_to_${endDate}.pdf`;
+      a.download = `sentrix_report_${startDate}_to_${endDate}.pdf`;
       document.body.appendChild(a);
       a.click();
       a.remove();

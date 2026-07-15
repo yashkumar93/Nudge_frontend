@@ -3,8 +3,9 @@ import "./globals.css";
 import Header from "../components/Header";
 
 export const metadata: Metadata = {
-  title: "Nudge — Structured Ingestion & Audit Ledger",
-  description: "Sleek, high-density structured order extraction and human-in-the-loop auditing for WhatsApp B2B wholesale.",
+  title: "Sentrix",
+  description: "Sentrix turns your WhatsApp order chat into an intelligent, self-learning order monitoring system — without replacing you"
+
 };
 
 export default function RootLayout({

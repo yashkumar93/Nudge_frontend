@@ -53,7 +53,7 @@ type AnomalyFlag = {
   orders?: Order;
 };
 
-export default function NudgeDashboard() {
+export default function SentrixDashboard() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [flags, setFlags] = useState<AnomalyFlag[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(true);
@@ -147,7 +147,7 @@ export default function NudgeDashboard() {
     try {
       const payload: any = {
         decision,
-        notes: decisionNotes || `Processed via Nudge Editorial Review Workspace.`
+        notes: decisionNotes || `Processed via Sentrix Editorial Review Workspace.`
       };
 
       const res = await fetch(`${API_BASE_URL}/flags/${flagId}/decision`, {
@@ -183,7 +183,7 @@ export default function NudgeDashboard() {
       const downloadUrl = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = downloadUrl;
-      a.download = `nudge_report_${startDate}.pdf`;
+      a.download = `sentrix_report_${startDate}.pdf`;
       document.body.appendChild(a);
       a.click();
       a.remove();

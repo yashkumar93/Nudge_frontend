@@ -14,7 +14,7 @@ export default function Header() {
     <header className="topbar">
       <div className="brand">
         <div className="brand-mark">N</div>
-        <span>Nudge</span>
+        <span>Sentrix</span>
         <span style={{ color: "var(--color-text-muted)", fontWeight: 400, marginLeft: 4 }}>Audit Ledger</span>
       </div>
       <div className="topbar-right">
