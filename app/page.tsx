@@ -12,6 +12,14 @@ import {
   Download,
   FileText,
   BarChart2,
+  Users,
+  User,
+  ShieldAlert,
+  Award,
+  TrendingUp,
+  DollarSign,
+  Calendar,
+  ArrowRight,
   X
 } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
@@ -53,6 +61,28 @@ type AnomalyFlag = {
   orders?: Order;
 };
 
+type Customer = {
+  id: string;
+  business_id?: string;
+  name: string;
+  whatsapp_phone: string;
+  total_orders: number;
+  total_spend: number;
+  first_order_at?: string;
+  last_order_at?: string;
+  is_flagged_risk?: boolean;
+  customer_profiles?: any;
+};
+
+type CustomerDetail = {
+  customer: Customer;
+  profile: any;
+  favourite_product?: { product_name: string; avg_qty: number; frequency: number };
+  risk_score: number;
+  recent_orders: any[];
+  recent_flags: any[];
+};
+
 const COLORS = ['#4ca28d', '#e05b45', '#d49a4f', '#6c8fb7', '#8a65b7', '#b59e5f', '#4ea277', '#c15e8b', '#489f9e', '#5e7c8a'];
 
 export default function SentrixDashboard() {
@@ -61,10 +91,18 @@ export default function SentrixDashboard() {
   const [loadingOrders, setLoadingOrders] = useState(true);
   const [loadingFlags, setLoadingFlags] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [searchQuery, setSearchQuery] = useState("");
   
-  // Analytics State
-  const [activeTab, setActiveTab] = useState<"ledger" | "analytics">("ledger");
+  // Analytics & Customer State
+  const [activeTab, setActiveTab] = useState<"ledger" | "customers" | "analytics">("ledger");
   const [analyticsData, setAnalyticsData] = useState<any>(null);
+  
+  // Customer Intelligence State
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
+  const [customerDetail, setCustomerDetail] = useState<CustomerDetail | null>(null);
+  const [loadingCustomers, setLoadingCustomers] = useState(false);
+  const [loadingCustomerDetail, setLoadingCustomerDetail] = useState(false);
   
   // Selection
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
@@ -123,22 +161,61 @@ export default function SentrixDashboard() {
     }
   }, []);
 
+  const fetchCustomers = useCallback(async () => {
+    setLoadingCustomers(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/customers`);
+      if (res.ok) {
+        const data = await res.json();
+        setCustomers(data.customers || []);
+      }
+    } catch (err) {
+      console.error("Error fetching customers:", err);
+    } finally {
+      setLoadingCustomers(false);
+    }
+  }, []);
+
+  const fetchCustomerDetail = useCallback(async (id: string) => {
+    if (!id) return;
+    setLoadingCustomerDetail(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/customers/${id}/profile`);
+      if (res.ok) {
+        const data = await res.json();
+        setCustomerDetail(data);
+      }
+    } catch (err) {
+      console.error("Error fetching customer profile:", err);
+    } finally {
+      setLoadingCustomerDetail(false);
+    }
+  }, []);
+
   const refreshAll = useCallback(() => {
     fetchOrders();
     fetchFlags();
     fetchAnalytics();
-  }, [fetchOrders, fetchFlags, fetchAnalytics]);
+    fetchCustomers();
+  }, [fetchOrders, fetchFlags, fetchAnalytics, fetchCustomers]);
 
   useEffect(() => {
     refreshAll();
   }, [refreshAll]);
+
+  useEffect(() => {
+    if (selectedCustomerId) {
+      fetchCustomerDetail(selectedCustomerId);
+    } else if (customers.length > 0) {
+      setSelectedCustomerId(customers[0].id);
+    }
+  }, [selectedCustomerId, customers, fetchCustomerDetail]);
 
   // Polling
   useEffect(() => {
     const interval = setInterval(() => {
       fetchOrders();
       fetchFlags();
-      // Optional: fetchAnalytics() too if you want live updates, but usually not needed as frequently
     }, 5000);
     return () => clearInterval(interval);
   }, [fetchOrders, fetchFlags]);
@@ -215,6 +292,12 @@ export default function SentrixDashboard() {
           onClick={() => setActiveTab("ledger")}
         >
           <FileText size={14} style={{ marginRight: 6 }}/> Audit Ledger
+        </button>
+        <button 
+          className={`pill ${activeTab === "customers" ? "active" : ""}`} 
+          onClick={() => setActiveTab("customers")}
+        >
+          <Users size={14} style={{ marginRight: 6 }}/> Customer Profiles
         </button>
         <button 
           className={`pill ${activeTab === "analytics" ? "active" : ""}`} 
@@ -350,6 +433,224 @@ export default function SentrixDashboard() {
             </div>
           </div>
         </div>
+      ) : activeTab === "customers" ? (
+        <div className="main-content">
+          {/* Left Pane: Customer Feed */}
+          <div className="sidebar" style={{ width: 340 }}>
+            <div className="list-header">
+              <h2>Customer Directory</h2>
+              <button onClick={fetchCustomers} disabled={loadingCustomers} style={{ color: "var(--color-text-muted)" }}>
+                <RefreshCw size={14} className={loadingCustomers ? "animate-spin" : ""} />
+              </button>
+            </div>
+
+            <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--color-border-subtle)" }}>
+              <div style={{ position: "relative" }}>
+                <Search size={14} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--color-text-muted)" }} />
+                <input 
+                  type="text" 
+                  placeholder="Search customer name or phone..." 
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  style={{ width: "100%", backgroundColor: "var(--color-bg-surface)", border: "1px solid var(--color-border-subtle)", borderRadius: 6, padding: "8px 12px 8px 36px", color: "var(--color-text-primary)", fontSize: 13, outline: "none" }}
+                />
+              </div>
+            </div>
+
+            <div className="content-area">
+              {customers
+                .filter(c => !searchQuery || c.name.toLowerCase().includes(searchQuery.toLowerCase()) || c.whatsapp_phone.includes(searchQuery))
+                .map(cust => (
+                  <div 
+                    key={cust.id} 
+                    className={`card ${selectedCustomerId === cust.id ? "selected" : ""}`}
+                    onClick={() => setSelectedCustomerId(cust.id)}
+                  >
+                    <div className="card-header">
+                      <div className="card-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <User size={14} /> {cust.name}
+                      </div>
+                      <div className="card-amount">₹{(cust.total_spend || 0).toLocaleString()}</div>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
+                      <div className="card-subtitle" style={{ marginTop: 0 }}>
+                        {cust.whatsapp_phone} • {cust.total_orders} Orders
+                      </div>
+                      {cust.is_flagged_risk ? (
+                        <span style={{ fontSize: 11, fontWeight: 600, color: "var(--color-status-red)", backgroundColor: "var(--color-status-red-dim)", padding: "2px 6px", borderRadius: 4 }}>
+                          ⚠️ High Risk
+                        </span>
+                      ) : (
+                        <span style={{ fontSize: 11, fontWeight: 500, color: "var(--color-status-green)", backgroundColor: "var(--color-status-green-dim)", padding: "2px 6px", borderRadius: 4 }}>
+                          ✓ Normal
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+            </div>
+          </div>
+
+          {/* Right Pane: Detailed Customer Intelligence Profile */}
+          <div className="content-area" style={{ borderLeft: "1px solid var(--color-border-subtle)", padding: "24px 32px", overflowY: "auto" }}>
+            {loadingCustomerDetail ? (
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "var(--color-text-muted)" }}>
+                <RefreshCw size={24} className="animate-spin" style={{ marginRight: 12 }} /> Building Customer Intelligence...
+              </div>
+            ) : customerDetail ? (
+              <div>
+                {/* Header Banner */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderBottom: "1px solid var(--color-border-subtle)", paddingBottom: 24, marginBottom: 24 }}>
+                  <div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                      <h1 style={{ fontSize: 22, fontWeight: 700 }}>{customerDetail.customer.name}</h1>
+                      <span className="mono" style={{ backgroundColor: "var(--color-bg-elevated)", padding: "4px 10px", borderRadius: 20, fontSize: 12, color: "var(--color-text-muted)" }}>
+                        {customerDetail.customer.whatsapp_phone}
+                      </span>
+                    </div>
+                    <div style={{ color: "var(--color-text-muted)", marginTop: 8, fontSize: 13, display: "flex", gap: 20 }}>
+                      <span>First Order: <strong style={{ color: "var(--color-text-primary)" }}>{customerDetail.customer.first_order_at ? new Date(customerDetail.customer.first_order_at).toLocaleDateString() : "N/A"}</strong></span>
+                      <span>Total Lifetime Orders: <strong style={{ color: "var(--color-text-primary)" }}>{customerDetail.customer.total_orders}</strong></span>
+                      <span>Typical Order Window: <strong style={{ color: "var(--color-text-primary)" }}>{customerDetail.profile.typical_order_hour_start ?? 9}:00 – {customerDetail.profile.typical_order_hour_end ?? 18}:00 UTC</strong></span>
+                    </div>
+                  </div>
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontSize: 11, color: "var(--color-text-muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>Total Lifetime Spend</div>
+                    <div style={{ fontSize: 26, fontWeight: 700, color: "var(--color-status-green)", marginTop: 2 }}>
+                      ₹{(customerDetail.customer.total_spend || 0).toLocaleString()}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Intelligence 4-Grid */}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 32 }}>
+                  {/* Card 1: Favourite Product */}
+                  <div style={{ backgroundColor: "var(--color-bg-surface)", border: "1px solid var(--color-border-subtle)", borderRadius: 8, padding: 16 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--color-accent-blue)", fontSize: 12, fontWeight: 600, textTransform: "uppercase" }}>
+                      <Award size={16} /> Favourite Product
+                    </div>
+                    <div style={{ fontSize: 18, fontWeight: 700, marginTop: 8, color: "var(--color-text-primary)" }}>
+                      {customerDetail.favourite_product?.product_name || "N/A"}
+                    </div>
+                    <div style={{ fontSize: 12, color: "var(--color-text-muted)", marginTop: 4 }}>
+                      Avg {customerDetail.favourite_product?.avg_qty || 0} qty • Ordered {customerDetail.favourite_product?.frequency || 0} times
+                    </div>
+                  </div>
+
+                  {/* Card 2: Normal Order Size */}
+                  <div style={{ backgroundColor: "var(--color-bg-surface)", border: "1px solid var(--color-border-subtle)", borderRadius: 8, padding: 16 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--color-status-green)", fontSize: 12, fontWeight: 600, textTransform: "uppercase" }}>
+                      <DollarSign size={16} /> Normal Order Size
+                    </div>
+                    <div style={{ fontSize: 18, fontWeight: 700, marginTop: 8, color: "var(--color-text-primary)" }}>
+                      ₹{(customerDetail.profile.avg_order_value || 0).toLocaleString()} / order
+                    </div>
+                    <div style={{ fontSize: 12, color: "var(--color-text-muted)", marginTop: 4 }}>
+                      Std Dev ±₹{(customerDetail.profile.stddev_order_value || 0).toLocaleString()}
+                    </div>
+                  </div>
+
+                  {/* Card 3: Buying Habits & Frequency */}
+                  <div style={{ backgroundColor: "var(--color-bg-surface)", border: "1px solid var(--color-border-subtle)", borderRadius: 8, padding: 16 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--color-status-amber)", fontSize: 12, fontWeight: 600, textTransform: "uppercase" }}>
+                      <Clock size={16} /> Buying Habits
+                    </div>
+                    <div style={{ fontSize: 18, fontWeight: 700, marginTop: 8, color: "var(--color-text-primary)" }}>
+                      Every ~{customerDetail.profile.avg_order_frequency_days || 1} Days
+                    </div>
+                    <div style={{ fontSize: 12, color: "var(--color-text-muted)", marginTop: 4 }}>
+                      Std Dev ±{customerDetail.profile.stddev_order_frequency_days || 0} days gap
+                    </div>
+                  </div>
+
+                  {/* Card 4: Risk Score */}
+                  <div style={{ backgroundColor: "var(--color-bg-surface)", border: "1px solid var(--color-border-subtle)", borderRadius: 8, padding: 16 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, color: customerDetail.risk_score > 50 ? "var(--color-status-red)" : "var(--color-status-green)", fontSize: 12, fontWeight: 600, textTransform: "uppercase" }}>
+                      <ShieldAlert size={16} /> Behavioral Risk Score
+                    </div>
+                    <div style={{ fontSize: 18, fontWeight: 700, marginTop: 8, color: customerDetail.risk_score > 50 ? "var(--color-status-red)" : "var(--color-status-green)" }}>
+                      {customerDetail.risk_score} / 100
+                    </div>
+                    <div style={{ fontSize: 12, color: "var(--color-text-muted)", marginTop: 4 }}>
+                      {customerDetail.risk_score > 50 ? "High Risk • Spikes Triggered" : "Low Risk • Consistent Pattern"}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Split Two Columns: Frequently Ordered Table + Anomaly Flag History */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
+                  {/* Left Column: Frequently Ordered Items */}
+                  <div style={{ backgroundColor: "var(--color-bg-surface)", border: "1px solid var(--color-border-subtle)", borderRadius: 8, padding: 20 }}>
+                    <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
+                      <TrendingUp size={16} color="var(--color-accent-blue)" /> Learned Item Preferences & Frequency
+                    </h3>
+                    <div style={{ overflowX: "auto" }}>
+                      <table className="table" style={{ width: "100%", fontSize: 13 }}>
+                        <thead>
+                          <tr style={{ borderBottom: "1px solid var(--color-border-subtle)", color: "var(--color-text-muted)", textAlign: "left" }}>
+                            <th style={{ paddingBottom: 8 }}>Product Name</th>
+                            <th style={{ paddingBottom: 8, textAlign: "right" }}>Avg Qty / Order</th>
+                            <th style={{ paddingBottom: 8, textAlign: "right" }}>Orders Count</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(customerDetail.profile.common_items || []).map((item: any, idx: number) => (
+                            <tr key={idx} style={{ borderBottom: "1px solid var(--color-border-subtle)" }}>
+                              <td style={{ padding: "10px 0", fontWeight: 500 }}>
+                                {item.product_name}
+                                {idx === 0 && (
+                                  <span style={{ marginLeft: 8, fontSize: 10, backgroundColor: "var(--color-accent-blue)", color: "white", padding: "2px 6px", borderRadius: 10 }}>
+                                    #1 Favourite
+                                  </span>
+                                )}
+                              </td>
+                              <td style={{ padding: "10px 0", textAlign: "right", color: "var(--color-text-muted)" }}>{item.avg_qty}</td>
+                              <td style={{ padding: "10px 0", textAlign: "right", fontWeight: 600 }}>{item.frequency}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* Right Column: Triggered Anomaly Flags & Spikes */}
+                  <div style={{ backgroundColor: "var(--color-bg-surface)", border: "1px solid var(--color-border-subtle)", borderRadius: 8, padding: 20 }}>
+                    <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
+                      <AlertTriangle size={16} color="var(--color-status-amber)" /> Anomaly & Spike Detection History
+                    </h3>
+                    {(customerDetail.recent_flags || []).length > 0 ? (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                        {customerDetail.recent_flags.map((flag: any) => (
+                          <div key={flag.id} style={{ backgroundColor: "var(--color-bg-base)", borderLeft: `3px solid ${flag.severity === "critical" || flag.severity === "high" ? "var(--color-status-red)" : "var(--color-status-amber)"}`, padding: 12, borderRadius: 4 }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                              <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: flag.severity === "critical" || flag.severity === "high" ? "var(--color-status-red)" : "var(--color-status-amber)" }}>
+                                {flag.severity} Severity Anomaly
+                              </span>
+                              <span style={{ fontSize: 11, color: "var(--color-text-muted)" }}>
+                                {new Date(flag.created_at).toLocaleDateString()}
+                              </span>
+                            </div>
+                            <p style={{ fontSize: 12, color: "var(--color-text-primary)", margin: 0, lineHeight: 1.4 }}>
+                              {flag.llm_reasoning}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div style={{ padding: 24, textAlign: "center", color: "var(--color-text-muted)", fontSize: 13 }}>
+                        No historical anomalies recorded. This customer orders within expected thresholds (e.g. ~₹500/order).
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div style={{ textAlign: "center", padding: 48, color: "var(--color-text-muted)" }}>
+                Select a customer from the left directory to view their AI-computed intelligence profile.
+              </div>
+            )}
+          </div>
+        </div>
       ) : (
       <div className="main-content">
         {/* Left Pane: Orders Feed */}
@@ -372,47 +673,95 @@ export default function SentrixDashboard() {
               </div>
             ))}
           </div>
+
+          <div style={{ padding: "0 16px 12px 16px" }}>
+            <div style={{ position: "relative" }}>
+              <Search size={14} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--color-text-muted)" }} />
+              <input 
+                type="text" 
+                placeholder="Search user name..." 
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                style={{ width: "100%", backgroundColor: "var(--color-bg-surface)", border: "1px solid var(--color-border-subtle)", borderRadius: 6, padding: "8px 12px 8px 36px", color: "var(--color-text-primary)", fontSize: 13, outline: "none" }}
+              />
+            </div>
+          </div>
           
           <div className="content-area">
-            {orders.length === 0 && !loadingOrders && (
-              <div style={{ padding: 24, textAlign: "center", color: "var(--color-text-muted)" }}>
-                No orders found.
-              </div>
-            )}
-            {orders.map((order, index) => {
-              const hasFlag = flags.some(f => f.order_id === order.id && order.status === "pending_review");
-              
-              const prevOrder = index > 0 ? orders[index - 1] : null;
-              const isSameCustomerAsPrev = prevOrder && prevOrder.customers?.name === order.customers?.name;
-              
-              return (
-                <div 
-                  key={order.id} 
-                  className={`card ${selectedOrderId === order.id ? "selected" : ""}`}
-                  onClick={() => setSelectedOrderId(order.id)}
-                >
-                  <div className="card-header">
-                    <div>
-                      {!isSameCustomerAsPrev && (
-                        <div className="card-title">{order.customers?.name || "Unknown Customer"}</div>
-                      )}
-                      <div className="card-subtitle" style={isSameCustomerAsPrev ? { marginTop: 0 } : {}}>
-                        Via {order.channel} • {new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </div>
-                    </div>
-                    <div style={{ textAlign: "right" }}>
-                      <div className="card-amount">₹{(order.total_value || 0).toLocaleString()}</div>
-                      <div className={`status ${order.status}`}>{order.status.replace("_", " ")}</div>
-                    </div>
+            {(() => {
+              const filteredOrders = orders
+                .filter(o => statusFilter === "all" || o.status === statusFilter)
+                .filter(o => !searchQuery || (o.customers?.name || "Unknown Customer").toLowerCase().includes(searchQuery.toLowerCase()));
+
+              if (filteredOrders.length === 0 && !loadingOrders) {
+                return (
+                  <div style={{ padding: 24, textAlign: "center", color: "var(--color-text-muted)" }}>
+                    No orders found.
                   </div>
-                  {hasFlag && (
-                    <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 4, color: "var(--color-status-amber)", fontSize: 11, fontWeight: 600 }}>
-                      <AlertTriangle size={12} /> ANOMALY DETECTED
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+                );
+              }
+
+              const grouped: Record<string, Order[]> = {};
+              const orderedNames: string[] = [];
+              filteredOrders.forEach(o => {
+                const name = o.customers?.name || "Unknown Customer";
+                if (!grouped[name]) {
+                  grouped[name] = [];
+                  orderedNames.push(name);
+                }
+                grouped[name].push(o);
+              });
+
+              return orderedNames.map(name => {
+                const custOrders = grouped[name];
+                return (
+                  <div key={name} className="card" style={{ padding: 0, overflow: "hidden", marginBottom: 12 }}>
+                    {custOrders.map((order, i) => {
+                      const hasFlag = flags.some(f => f.order_id === order.id && order.status === "pending_review");
+                      return (
+                        <div 
+                          key={order.id}
+                          onClick={() => setSelectedOrderId(order.id)}
+                          style={{ 
+                            padding: 16, 
+                            cursor: "pointer",
+                            backgroundColor: selectedOrderId === order.id ? "var(--color-bg-surface)" : "transparent",
+                            borderBottom: i < custOrders.length - 1 ? "1px solid var(--color-border-subtle)" : "none",
+                            transition: "background-color 0.2s"
+                          }}
+                        >
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                            {i === 0 ? (
+                              <div className="card-title" style={{ fontSize: 16 }}>{name}</div>
+                            ) : (
+                              <div className="card-subtitle" style={{ marginTop: 0 }}>
+                                Via {order.channel} • {new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </div>
+                            )}
+                            <div className="card-amount">₹{(order.total_value || 0).toLocaleString()}</div>
+                          </div>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                            {i === 0 ? (
+                              <div className="card-subtitle" style={{ marginTop: 0 }}>
+                                Via {order.channel} • {new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </div>
+                            ) : (
+                              <div />
+                            )}
+                            <div className={`status ${order.status}`}>{order.status.replace("_", " ").toUpperCase()}</div>
+                          </div>
+                          {hasFlag && (
+                            <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 4, color: "var(--color-status-amber)", fontSize: 11, fontWeight: 600 }}>
+                              <AlertTriangle size={12} /> ANOMALY DETECTED
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              });
+            })()}
           </div>
         </div>
 
@@ -431,6 +780,22 @@ export default function SentrixDashboard() {
                     <span>Channel: {selectedOrder.channel}</span>
                     <span>{new Date(selectedOrder.created_at).toLocaleString()}</span>
                   </div>
+                  <button
+                    className="btn btn-outline"
+                    onClick={() => {
+                      setActiveTab("customers");
+                      if (selectedOrder.customers) {
+                        const target = customers.find(c => c.name === selectedOrder.customers?.name || c.id === selectedOrder.customer_id);
+                        if (target) setSelectedCustomerId(target.id);
+                        else setSelectedCustomerId("cust-101");
+                      } else {
+                        setSelectedCustomerId("cust-101");
+                      }
+                    }}
+                    style={{ marginTop: 12, padding: "4px 10px", fontSize: 12 }}
+                  >
+                    <User size={14} style={{ marginRight: 6 }} /> Inspect Customer Intelligence Profile ({selectedOrder.customers?.name}) →
+                  </button>
                 </div>
                 <div className="card-amount" style={{ fontSize: 24 }}>
                   ₹{(selectedOrder.total_value || 0).toLocaleString()}
