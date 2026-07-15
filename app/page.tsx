@@ -20,7 +20,14 @@ import {
   DollarSign,
   Calendar,
   ArrowRight,
-  X
+  X,
+  QrCode,
+  MessageCircle,
+  Copy,
+  Check,
+  ExternalLink,
+  Smartphone,
+  Sparkles
 } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 
@@ -117,8 +124,10 @@ export default function SentrixDashboard() {
   const [startDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [endDate] = useState(() => new Date().toISOString().split("T")[0]);
 
-  // Order Modal
+  // Order Modal & Copy States
   const [isOrderModalOpen, setOrderModalOpen] = useState(false);
+  const [copiedCode, setCopiedCode] = useState(false);
+  const [copiedSample, setCopiedSample] = useState(false);
 
   const fetchOrders = useCallback(async () => {
     setLoadingOrders(true);
@@ -318,28 +327,36 @@ export default function SentrixDashboard() {
         </Link>
         <div style={{ flex: 1 }}></div>
         <button 
-          onClick={() => setOrderModalOpen(true)}
+          onClick={() => {
+            setOrderModalOpen(true);
+            setCopiedCode(false);
+            setCopiedSample(false);
+          }}
           style={{
-            backgroundColor: "#c2593e",
+            background: "linear-gradient(135deg, #FF6B4A 0%, #D9482B 100%)",
             color: "white",
-            border: "none",
+            border: "1px solid rgba(255, 255, 255, 0.25)",
             padding: "8px 16px",
+            borderRadius: "8px",
             fontSize: "12px",
-            fontWeight: "bold",
-            letterSpacing: "1px",
+            fontWeight: "700",
+            letterSpacing: "0.8px",
             cursor: "pointer",
             display: "flex",
             alignItems: "center",
-            gap: "8px",
-            position: "relative",
+            gap: "10px",
+            boxShadow: "0 4px 14px rgba(224, 75, 43, 0.4)",
+            transition: "all 0.2s ease",
           }}
         >
-          <div style={{ position: "absolute", top: 0, left: 0, width: 6, height: 6, borderTop: "2px solid white", borderLeft: "2px solid white" }}></div>
-          <div style={{ position: "absolute", bottom: 0, left: 0, width: 6, height: 6, borderBottom: "2px solid white", borderLeft: "2px solid white" }}></div>
-          <div style={{ position: "absolute", top: 0, right: 0, width: 6, height: 6, borderTop: "2px solid white", borderRight: "2px solid white" }}></div>
-          <div style={{ position: "absolute", bottom: 0, right: 0, width: 6, height: 6, borderBottom: "2px solid white", borderRight: "2px solid white" }}></div>
-          <div style={{ width: 8, height: 8, backgroundColor: "#e2b8a7", borderRadius: "50%" }}></div>
-          PLACE ORDER
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.2)", borderRadius: "6px", width: "24px", height: "24px" }}>
+            <QrCode size={14} />
+          </div>
+          <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", lineHeight: 1.1 }}>
+            <span style={{ fontSize: "9px", opacity: 0.9, textTransform: "uppercase", letterSpacing: "0.5px" }}>Live AI Sandbox</span>
+            <span>ORDER ON WHATSAPP</span>
+          </span>
+          <Sparkles size={14} style={{ opacity: 0.9 }} />
         </button>
       </div>
       
@@ -428,11 +445,33 @@ export default function SentrixDashboard() {
             </div>
             <div style={{ display: "flex", justifyContent: "flex-end" }}>
               <button 
-                onClick={() => setOrderModalOpen(true)}
-                style={{ backgroundColor: "#e05b45", color: "#fff", border: "none", borderRadius: 4, padding: "12px 24px", fontSize: 13, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 8, letterSpacing: "1px" }}
+                onClick={() => {
+                  setOrderModalOpen(true);
+                  setCopiedCode(false);
+                  setCopiedSample(false);
+                }}
+                style={{
+                  background: "linear-gradient(135deg, #FF6B4A 0%, #D9482B 100%)",
+                  color: "#fff",
+                  border: "1px solid rgba(255, 255, 255, 0.25)",
+                  borderRadius: "8px",
+                  padding: "10px 20px",
+                  fontSize: "13px",
+                  fontWeight: "700",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "10px",
+                  letterSpacing: "0.8px",
+                  boxShadow: "0 6px 18px rgba(224, 75, 43, 0.4)",
+                  transition: "all 0.2s ease"
+                }}
               >
-                <div style={{ width: 6, height: 6, backgroundColor: "#fff", borderRadius: "50%", opacity: 0.5 }} />
-                PLACE ORDER
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.2)", borderRadius: "6px", width: "24px", height: "24px" }}>
+                  <QrCode size={15} />
+                </div>
+                <span>ORDER VIA WHATSAPP / SCAN QR</span>
+                <Sparkles size={15} style={{ opacity: 0.9 }} />
               </button>
             </div>
           </div>
@@ -961,45 +1000,167 @@ export default function SentrixDashboard() {
       </div>
       )}
 
-      {/* Place Order Modal */}
+      {/* Refined Place Order & QR Code Modal */}
       {isOrderModalOpen && (
-        <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
-          <div style={{ backgroundColor: "#1a231f", padding: "32px", borderRadius: "8px", width: "400px", position: "relative", border: "1px solid #2a332f", boxShadow: "0 10px 25px rgba(0,0,0,0.5)" }}>
-            <button 
-              onClick={() => setOrderModalOpen(false)}
-              style={{ position: "absolute", top: "16px", right: "16px", background: "none", border: "none", color: "var(--color-text-muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
-            >
-              <X size={18} />
-            </button>
-            <h2 style={{ margin: "0 0 16px 0", color: "#f8e5d6", fontFamily: "serif", fontSize: "24px" }}>Order on WhatsApp</h2>
-            <p style={{ color: "var(--color-text-muted)", marginBottom: "16px", fontSize: "14px" }}>First time? Send this code to join:</p>
+        <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(10, 14, 12, 0.85)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999, backdropFilter: "blur(8px)", padding: "20px" }}>
+          <div style={{ backgroundColor: "#161b18", padding: "28px 32px", borderRadius: "16px", width: "100%", maxWidth: "480px", position: "relative", border: "1px solid #2d3832", boxShadow: "0 25px 60px rgba(0,0,0,0.85)", display: "flex", flexDirection: "column", maxHeight: "90vh", overflowY: "auto" }}>
             
-            <div style={{ backgroundColor: "#0f1512", padding: "16px", borderRadius: "4px", textAlign: "center", marginBottom: "24px", border: "1px solid #1a231f" }}>
-              <code style={{ color: "#d97757", fontSize: "18px", letterSpacing: "1px", fontFamily: "monospace" }}>join main-wide</code>
+            {/* Modal Header */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "16px" }}>
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "#2ED573", fontSize: "11px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "1px", marginBottom: "6px" }}>
+                  <span style={{ width: "8px", height: "8px", backgroundColor: "#2ED573", borderRadius: "50%", display: "inline-block" }}></span>
+                  Twilio AI Ordering Sandbox
+                </div>
+                <h2 style={{ margin: 0, color: "#ffffff", fontSize: "22px", fontWeight: "700", display: "flex", alignItems: "center", gap: "10px" }}>
+                  <MessageCircle size={24} color="#2ED573" /> Order via WhatsApp
+                </h2>
+              </div>
+              <button 
+                onClick={() => setOrderModalOpen(false)}
+                style={{ background: "#222a25", border: "1px solid #333f38", color: "var(--color-text-muted)", borderRadius: "8px", width: "34px", height: "34px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.15s ease" }}
+              >
+                <X size={18} />
+              </button>
             </div>
+
+            <p style={{ color: "var(--color-text-secondary)", fontSize: "13px", lineHeight: "1.5", margin: "0 0 20px 0", borderBottom: "1px solid #232d28", paddingBottom: "16px" }}>
+              Our AI order ingest engine listens live on WhatsApp. Scan below or connect with our sandbox number to test instant extraction & behavioral reasoning.
+            </p>
             
-            <a 
-              href="https://api.whatsapp.com/send/?phone=%2B14155238886&text=Hi%2C+I+want+to+place+an+order&type=phone_number&app_absent=0" 
-              target="_blank" 
-              rel="noopener noreferrer"
-              style={{
-                display: "block",
-                backgroundColor: "#c2593e",
-                color: "white",
-                textDecoration: "none",
-                textAlign: "center",
-                padding: "14px",
-                borderRadius: "4px",
-                fontWeight: "bold",
-                letterSpacing: "1px",
-                marginBottom: "16px",
-                fontSize: "14px"
-              }}
-            >
-              PLACE AN ORDER INSTEAD
-            </a>
-            
-            <p style={{ textAlign: "center", color: "var(--color-text-muted)", fontSize: "13px", margin: 0 }}>Need to rejoin?</p>
+            {/* Step 1: Scan QR Code Container */}
+            <div style={{ backgroundColor: "#1e2521", borderRadius: "12px", border: "1px solid #2d3832", padding: "18px", marginBottom: "16px", display: "flex", flexDirection: "column", alignItems: "center" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", width: "100%", justifyContent: "space-between", marginBottom: "14px" }}>
+                <span style={{ fontSize: "12px", fontWeight: "700", color: "#ffffff", display: "flex", alignItems: "center", gap: "6px" }}>
+                  <QrCode size={16} color="var(--color-accent-blue)" /> STEP 1: Scan QR Code with Phone
+                </span>
+                <span style={{ fontSize: "11px", backgroundColor: "rgba(74, 158, 255, 0.15)", color: "var(--color-accent-blue)", padding: "3px 8px", borderRadius: "20px", fontWeight: "600" }}>
+                  Instant Launch
+                </span>
+              </div>
+
+              <div style={{ backgroundColor: "#ffffff", padding: "14px", borderRadius: "12px", boxShadow: "0 8px 24px rgba(0,0,0,0.4)", display: "flex", flexDirection: "column", alignItems: "center", position: "relative" }}>
+                <img 
+                  src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&margin=8&data=https%3A%2F%2Fapi.whatsapp.com%2Fsend%2F%3Fphone%3D%252B14155238886%26text%3DHi%252C%2Bi%2Bwant%2Bto%2Bplace%2Ban%2Border%26type%3Dphone_number%26app_absent%3D0" 
+                  alt="WhatsApp Order QR Code"
+                  style={{ width: "160px", height: "160px", display: "block" }}
+                />
+                <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "#111", fontSize: "11px", fontWeight: "700", marginTop: "8px", letterSpacing: "0.5px" }}>
+                  <Smartphone size={14} /> SCAN TO OPEN CHAT ON MOBILE
+                </div>
+              </div>
+
+              <div style={{ width: "100%", display: "flex", alignItems: "center", margin: "14px 0", color: "var(--color-text-muted)", fontSize: "11px", fontWeight: "600" }}>
+                <div style={{ flex: 1, height: "1px", backgroundColor: "#2d3832" }}></div>
+                <span style={{ padding: "0 12px" }}>OR FOR DESKTOP & WEB</span>
+                <div style={{ flex: 1, height: "1px", backgroundColor: "#2d3832" }}></div>
+              </div>
+
+              <a 
+                href="https://api.whatsapp.com/send/?phone=%2B14155238886&text=Hi%2C+I+want+to+place+an+order&type=phone_number&app_absent=0" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "8px",
+                  width: "100%",
+                  background: "linear-gradient(135deg, #2ED573 0%, #20BF6B 100%)",
+                  color: "#0a140f",
+                  textDecoration: "none",
+                  padding: "12px 18px",
+                  borderRadius: "8px",
+                  fontWeight: "800",
+                  fontSize: "13px",
+                  boxShadow: "0 4px 15px rgba(46, 213, 115, 0.3)",
+                  transition: "all 0.2s ease"
+                }}
+              >
+                <span>🚀 OPEN WHATSAPP CHAT DIRECTLY</span>
+                <ExternalLink size={16} />
+              </a>
+            </div>
+
+            {/* Step 2: First-time Sandbox Joining */}
+            <div style={{ backgroundColor: "#1e2521", borderRadius: "12px", border: "1px solid #2d3832", padding: "16px", marginBottom: "16px" }}>
+              <div style={{ fontSize: "12px", fontWeight: "700", color: "#ffffff", marginBottom: "6px", display: "flex", alignItems: "center", gap: "6px" }}>
+                <span>STEP 2: First Time Connecting? Send Join Code</span>
+              </div>
+              <p style={{ fontSize: "12px", color: "var(--color-text-muted)", margin: "0 0 12px 0", lineHeight: "1.4" }}>
+                If this phone number hasn't connected to the sandbox yet, send the verification prompt to authenticate:
+              </p>
+              <div style={{ backgroundColor: "#131816", padding: "10px 14px", borderRadius: "8px", border: "1px solid #2a352f", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <code style={{ color: "#FF6B4A", fontSize: "15px", fontWeight: "700", fontFamily: "monospace" }}>join main-wide</code>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText("join main-wide");
+                    setCopiedCode(true);
+                    setTimeout(() => setCopiedCode(false), 3000);
+                  }}
+                  style={{ 
+                    background: copiedCode ? "rgba(46, 213, 115, 0.15)" : "#222a25", 
+                    border: `1px solid ${copiedCode ? "#2ED573" : "#333f38"}`, 
+                    borderRadius: "6px", 
+                    padding: "6px 12px", 
+                    color: copiedCode ? "#2ED573" : "var(--color-text-primary)", 
+                    fontSize: "11px", 
+                    fontWeight: "600",
+                    cursor: "pointer", 
+                    display: "flex", 
+                    alignItems: "center", 
+                    gap: "6px",
+                    transition: "all 0.2s ease"
+                  }}
+                >
+                  {copiedCode ? <Check size={13} /> : <Copy size={13} />}
+                  {copiedCode ? "Copied!" : "Copy Code"}
+                </button>
+              </div>
+            </div>
+
+            {/* Step 3: Sample Order Prompt */}
+            <div style={{ backgroundColor: "#1e2521", borderRadius: "12px", border: "1px solid #2d3832", padding: "16px" }}>
+              <div style={{ fontSize: "12px", fontWeight: "700", color: "#ffffff", marginBottom: "6px" }}>
+                STEP 3: Try Sending a Natural Language Order
+              </div>
+              <p style={{ fontSize: "12px", color: "var(--color-text-muted)", margin: "0 0 12px 0" }}>
+                Once joined, send any freeform order in English or Hinglish:
+              </p>
+              <div style={{ backgroundColor: "#131816", padding: "10px 14px", borderRadius: "8px", border: "1px solid #2a352f", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: "12px", color: "var(--color-text-secondary)", fontStyle: "italic", flex: 1, marginRight: "10px" }}>
+                  "Bhaiya 5 packets basmati rice and 2 kg sugar urgent"
+                </span>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText("Bhaiya 5 packets basmati rice and 2 kg sugar urgent");
+                    setCopiedSample(true);
+                    setTimeout(() => setCopiedSample(false), 3000);
+                  }}
+                  style={{ 
+                    background: copiedSample ? "rgba(46, 213, 115, 0.15)" : "#222a25", 
+                    border: `1px solid ${copiedSample ? "#2ED573" : "#333f38"}`, 
+                    borderRadius: "6px", 
+                    padding: "6px 12px", 
+                    color: copiedSample ? "#2ED573" : "var(--color-text-primary)", 
+                    fontSize: "11px", 
+                    fontWeight: "600",
+                    cursor: "pointer", 
+                    display: "flex", 
+                    alignItems: "center", 
+                    gap: "6px"
+                  }}
+                >
+                  {copiedSample ? <Check size={13} /> : <Copy size={13} />}
+                  {copiedSample ? "Copied!" : "Copy Sample"}
+                </button>
+              </div>
+            </div>
+
+            {/* Footer note */}
+            <div style={{ marginTop: "16px", textAlign: "center", fontSize: "11px", color: "var(--color-text-muted)" }}>
+              All incoming messages are processed by Twilio webhooks & our AI pipeline in real time.
+            </div>
           </div>
         </div>
       )}
