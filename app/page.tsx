@@ -479,7 +479,7 @@ export default function SentrixDashboard() {
       ) : activeTab === "customers" ? (
         <div className="main-content">
           {/* Left Pane: Customer Feed */}
-          <div className="sidebar" style={{ width: 340 }}>
+          <div className="sidebar" style={{ width: 340, flexShrink: 0, minHeight: 0, height: "100%", display: "flex", flexDirection: "column", overflow: "hidden" }}>
             <div className="list-header">
               <h2>Customer Directory</h2>
               <button onClick={fetchCustomers} disabled={loadingCustomers} style={{ color: "var(--color-text-muted)" }}>
@@ -500,7 +500,7 @@ export default function SentrixDashboard() {
               </div>
             </div>
 
-            <div className="content-area">
+            <div className="content-area" style={{ flex: 1, minHeight: 0, overflowY: "auto", paddingBottom: 20 }}>
               {customers
                 .filter(c => !searchQuery || c.name.toLowerCase().includes(searchQuery.toLowerCase()) || c.whatsapp_phone.includes(searchQuery))
                 .map(cust => (
@@ -697,7 +697,7 @@ export default function SentrixDashboard() {
       ) : (
       <div className="main-content">
         {/* Left Pane: Orders Feed */}
-        <div className="sidebar">
+        <div className="sidebar" style={{ width: 340, flexShrink: 0, minHeight: 0, height: "100%", display: "flex", flexDirection: "column", overflow: "hidden" }}>
           <div className="list-header">
             <h2>Order Feed</h2>
             <button onClick={refreshAll} disabled={loadingOrders} style={{ color: "var(--color-text-muted)" }}>
@@ -730,7 +730,7 @@ export default function SentrixDashboard() {
             </div>
           </div>
           
-          <div className="content-area">
+          <div className="content-area" style={{ flex: 1, minHeight: 0, overflowY: "auto", paddingBottom: 20 }}>
             {(() => {
               const filteredOrders = orders
                 .filter(o => statusFilter === "all" || o.status === statusFilter)
