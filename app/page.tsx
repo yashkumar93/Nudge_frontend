@@ -714,50 +714,79 @@ export default function SentrixDashboard() {
 
               return orderedNames.map(name => {
                 const custOrders = grouped[name];
+                const totalCustAmount = custOrders.reduce((sum, o) => sum + (o.total_value || 0), 0);
+
                 return (
-                  <div key={name} className="card" style={{ padding: 0, overflow: "hidden", marginBottom: 12 }}>
-                    {custOrders.map((order, i) => {
-                      const hasFlag = flags.some(f => f.order_id === order.id && order.status === "pending_review");
-                      return (
-                        <div 
-                          key={order.id}
-                          onClick={() => setSelectedOrderId(order.id)}
-                          style={{ 
-                            padding: 16, 
-                            cursor: "pointer",
-                            backgroundColor: selectedOrderId === order.id ? "var(--color-bg-surface)" : "transparent",
-                            borderBottom: i < custOrders.length - 1 ? "1px solid var(--color-border-subtle)" : "none",
-                            transition: "background-color 0.2s"
-                          }}
-                        >
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                            {i === 0 ? (
-                              <div className="card-title" style={{ fontSize: 16 }}>{name}</div>
-                            ) : (
-                              <div className="card-subtitle" style={{ marginTop: 0 }}>
-                                Via {order.channel} • {new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  <div key={name} className="card" style={{ padding: 0, overflow: "hidden", marginBottom: 16, border: "1px solid var(--color-border-subtle)" }}>
+                    {/* Person Box Header */}
+                    <div 
+                      style={{ 
+                        padding: "12px 16px", 
+                        backgroundColor: "var(--color-bg-elevated)", 
+                        borderBottom: "1px solid var(--color-border-subtle)",
+                        display: "flex", 
+                        justifyContent: "space-between", 
+                        alignItems: "center" 
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <User size={15} color="var(--color-accent-blue)" />
+                        <span style={{ fontSize: 15, fontWeight: 700, color: "var(--color-text-primary)" }}>{name}</span>
+                        <span style={{ fontSize: 11, backgroundColor: "var(--color-bg-surface)", border: "1px solid var(--color-border-subtle)", padding: "2px 8px", borderRadius: 12, color: "var(--color-text-muted)" }}>
+                          {custOrders.length} {custOrders.length === 1 ? "Message" : "Messages"}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: 15, fontWeight: 700, color: "var(--color-status-green)" }}>
+                        ₹{totalCustAmount.toLocaleString()}
+                      </div>
+                    </div>
+
+                    {/* Messages inside this person's box */}
+                    <div style={{ display: "flex", flexDirection: "column" }}>
+                      {custOrders.map((order, i) => {
+                        const hasFlag = flags.some(f => f.order_id === order.id && order.status === "pending_review");
+                        const isSelected = selectedOrderId === order.id;
+                        const msgText = order.whatsapp_messages?.raw_text || order.raw_parsed?.raw_text || (order.order_items?.map(it => `${it.quantity} ${it.unit} ${it.product_name_raw}`).join(", ")) || `Order #${order.id.split("-")[0]}`;
+
+                        return (
+                          <div 
+                            key={order.id}
+                            onClick={() => setSelectedOrderId(order.id)}
+                            style={{ 
+                              padding: "12px 16px", 
+                              cursor: "pointer",
+                              backgroundColor: isSelected ? "var(--color-bg-surface)" : "transparent",
+                              borderBottom: i < custOrders.length - 1 ? "1px solid var(--color-border-subtle)" : "none",
+                              transition: "background-color 0.2s"
+                            }}
+                          >
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 6 }}>
+                              <div style={{ fontSize: 13, fontWeight: 500, color: isSelected ? "var(--color-text-primary)" : "#d3dcd7", lineHeight: 1.3, flex: 1 }}>
+                                💬 "{msgText}"
                               </div>
-                            )}
-                            <div className="card-amount">₹{(order.total_value || 0).toLocaleString()}</div>
-                          </div>
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                            {i === 0 ? (
-                              <div className="card-subtitle" style={{ marginTop: 0 }}>
-                                Via {order.channel} • {new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              <div className="card-amount" style={{ fontSize: 13, whiteSpace: "nowrap" }}>
+                                ₹{(order.total_value || 0).toLocaleString()}
                               </div>
-                            ) : (
-                              <div />
-                            )}
-                            <div className={`status ${order.status}`}>{order.status.replace("_", " ").toUpperCase()}</div>
-                          </div>
-                          {hasFlag && (
-                            <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 4, color: "var(--color-status-amber)", fontSize: 11, fontWeight: 600 }}>
-                              <AlertTriangle size={12} /> ANOMALY DETECTED
                             </div>
-                          )}
-                        </div>
-                      );
-                    })}
+
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                              <div className="card-subtitle" style={{ marginTop: 0, fontSize: 11 }}>
+                                Via {order.channel || "whatsapp"} • {new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </div>
+                              <div className={`status ${order.status}`} style={{ fontSize: 10, padding: "2px 8px" }}>
+                                {order.status.replace("_", " ").toUpperCase()}
+                              </div>
+                            </div>
+
+                            {hasFlag && (
+                              <div style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 4, color: "var(--color-status-amber)", fontSize: 11, fontWeight: 600 }}>
+                                <AlertTriangle size={12} /> ANOMALY DETECTED
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 );
               });
