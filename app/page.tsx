@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import {
   RefreshCw,
   Search,
@@ -10,7 +11,8 @@ import {
   Clock,
   Download,
   FileText,
-  BarChart2
+  BarChart2,
+  X
 } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 
@@ -74,6 +76,9 @@ export default function NudgeDashboard() {
   const [reportDownloading, setReportDownloading] = useState(false);
   const [startDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [endDate] = useState(() => new Date().toISOString().split("T")[0]);
+
+  // Order Modal
+  const [isOrderModalOpen, setOrderModalOpen] = useState(false);
 
   const fetchOrders = useCallback(async () => {
     setLoadingOrders(true);
@@ -191,7 +196,7 @@ export default function NudgeDashboard() {
 
   // Find the selected order and its flag (if any)
   const selectedOrder = orders.find(o => o.id === selectedOrderId);
-  const selectedFlag = selectedOrder ? flags.find(f => f.order_id === selectedOrder.id && f.orders?.status === "pending_review") : null;
+  const selectedFlag = (selectedOrder && selectedOrder.status === "pending_review") ? flags.find(f => f.order_id === selectedOrder.id) : null;
 
   return (
     <div className="app-container">
@@ -214,6 +219,38 @@ export default function NudgeDashboard() {
           onClick={() => setActiveTab("analytics")}
         >
           <BarChart2 size={14} style={{ marginRight: 6 }}/> Analytics
+        </button>
+        <Link 
+          href="/reports"
+          className="pill" 
+          style={{ textDecoration: "none", display: "flex", alignItems: "center" }}
+        >
+          <Download size={14} style={{ marginRight: 6 }}/> Reports
+        </Link>
+        <div style={{ flex: 1 }}></div>
+        <button 
+          onClick={() => setOrderModalOpen(true)}
+          style={{
+            backgroundColor: "#c2593e",
+            color: "white",
+            border: "none",
+            padding: "8px 16px",
+            fontSize: "12px",
+            fontWeight: "bold",
+            letterSpacing: "1px",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+            position: "relative",
+          }}
+        >
+          <div style={{ position: "absolute", top: 0, left: 0, width: 6, height: 6, borderTop: "2px solid white", borderLeft: "2px solid white" }}></div>
+          <div style={{ position: "absolute", bottom: 0, left: 0, width: 6, height: 6, borderBottom: "2px solid white", borderLeft: "2px solid white" }}></div>
+          <div style={{ position: "absolute", top: 0, right: 0, width: 6, height: 6, borderTop: "2px solid white", borderRight: "2px solid white" }}></div>
+          <div style={{ position: "absolute", bottom: 0, right: 0, width: 6, height: 6, borderBottom: "2px solid white", borderRight: "2px solid white" }}></div>
+          <div style={{ width: 8, height: 8, backgroundColor: "#e2b8a7", borderRadius: "50%" }}></div>
+          PLACE ORDER
         </button>
       </div>
       
@@ -451,14 +488,53 @@ export default function NudgeDashboard() {
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", color: "var(--color-text-muted)" }}>
               <FileText size={48} style={{ opacity: 0.2, marginBottom: 16 }} />
               <p>Select an order from the feed to view details and resolve anomalies.</p>
-              
-              <button className="btn btn-outline" style={{ marginTop: 24 }} onClick={handleDownloadReport} disabled={reportDownloading}>
-                <Download size={14} /> {reportDownloading ? "Generating..." : "Download Daily Report"}
-              </button>
             </div>
           )}
         </div>
       </div>
+      )}
+
+      {/* Place Order Modal */}
+      {isOrderModalOpen && (
+        <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
+          <div style={{ backgroundColor: "#1a231f", padding: "32px", borderRadius: "8px", width: "400px", position: "relative", border: "1px solid #2a332f", boxShadow: "0 10px 25px rgba(0,0,0,0.5)" }}>
+            <button 
+              onClick={() => setOrderModalOpen(false)}
+              style={{ position: "absolute", top: "16px", right: "16px", background: "none", border: "none", color: "var(--color-text-muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+            >
+              <X size={18} />
+            </button>
+            <h2 style={{ margin: "0 0 16px 0", color: "#f8e5d6", fontFamily: "serif", fontSize: "24px" }}>Order on WhatsApp</h2>
+            <p style={{ color: "var(--color-text-muted)", marginBottom: "16px", fontSize: "14px" }}>First time? Send this code to join:</p>
+            
+            <div style={{ backgroundColor: "#0f1512", padding: "16px", borderRadius: "4px", textAlign: "center", marginBottom: "24px", border: "1px solid #1a231f" }}>
+              <code style={{ color: "#d97757", fontSize: "18px", letterSpacing: "1px", fontFamily: "monospace" }}>join main-wide</code>
+            </div>
+            
+            <a 
+              href="https://api.whatsapp.com/send/?phone=%2B14155238886&text=Hi%2C+I+want+to+place+an+order&type=phone_number&app_absent=0" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              style={{
+                display: "block",
+                backgroundColor: "#c2593e",
+                color: "white",
+                textDecoration: "none",
+                textAlign: "center",
+                padding: "14px",
+                borderRadius: "4px",
+                fontWeight: "bold",
+                letterSpacing: "1px",
+                marginBottom: "16px",
+                fontSize: "14px"
+              }}
+            >
+              PLACE AN ORDER INSTEAD
+            </a>
+            
+            <p style={{ textAlign: "center", color: "var(--color-text-muted)", fontSize: "13px", margin: 0 }}>Need to rejoin?</p>
+          </div>
+        </div>
       )}
     </div>
   );
