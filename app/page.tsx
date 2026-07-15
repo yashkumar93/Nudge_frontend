@@ -220,7 +220,7 @@ export default function SentrixDashboard() {
     return () => clearInterval(interval);
   }, [fetchOrders, fetchFlags]);
 
-  const handleDecision = async (flagId: string, decision: "approved" | "rejected" | "modified") => {
+  const handleDecision = async (targetId: string, decision: "approved" | "rejected" | "modified", isOrderId: boolean = false) => {
     setDecisionLoading(true);
     setErrorMessage("");
     try {
@@ -229,7 +229,11 @@ export default function SentrixDashboard() {
         notes: decisionNotes || `Processed via Sentrix Editorial Review Workspace.`
       };
 
-      const res = await fetch(`${API_BASE_URL}/flags/${flagId}/decision`, {
+      const endpoint = isOrderId 
+        ? `${API_BASE_URL}/orders/${targetId}/decision`
+        : `${API_BASE_URL}/flags/${targetId}/decision`;
+
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
@@ -832,37 +836,81 @@ export default function SentrixDashboard() {
               </div>
 
               <div className="detail-body">
-                {/* Active Anomaly Flag */}
-                {selectedFlag && (
-                  <div className="anomaly-banner">
-                    <h4><AlertTriangle size={16} /> Audit Required</h4>
-                    <p>{selectedFlag.llm_reasoning}</p>
+                {/* Active Anomaly Flag or Human-in-the-Loop Approval Required */}
+                {(selectedOrder.status === "pending_review" || selectedFlag) && (
+                  <div className="anomaly-banner" style={{ backgroundColor: selectedFlag ? "rgba(224, 91, 69, 0.12)" : "rgba(74, 158, 255, 0.12)", border: `1px solid ${selectedFlag ? "var(--color-status-amber)" : "#4a9eff"}`, borderRadius: 8, padding: 20, marginBottom: 24 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                      {selectedFlag ? (
+                        <AlertTriangle size={18} color="var(--color-status-amber)" />
+                      ) : (
+                        <CheckCircle2 size={18} color="#4a9eff" />
+                      )}
+                      <h4 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "var(--color-text-primary)" }}>
+                        {selectedFlag ? "AI Anomaly Detected • Human-In-The-Loop Audit Required" : "Human-In-The-Loop Verification & Approval Required"}
+                      </h4>
+                    </div>
+                    <p style={{ fontSize: 13, color: "var(--color-text-secondary)", margin: "0 0 16px 0", lineHeight: 1.4 }}>
+                      {selectedFlag 
+                        ? selectedFlag.llm_reasoning 
+                        : "This order is currently pending human review. As an administrator, verify the raw message and parsed items below before accepting or rejecting this order."
+                      }
+                    </p>
                     
-                    <div className="action-bar" style={{ marginTop: 16, backgroundColor: "rgba(0,0,0,0.2)", border: "none" }}>
+                    <div className="action-bar" style={{ backgroundColor: "rgba(0,0,0,0.3)", border: "1px solid var(--color-border-subtle)", borderRadius: 6, padding: 12, display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
                       <input 
                         type="text" 
                         className="input-field" 
-                        placeholder="Add review notes (optional)..." 
+                        placeholder="Add review notes or justification (optional)..." 
                         value={decisionNotes}
                         onChange={(e) => setDecisionNotes(e.target.value)}
-                        style={{ backgroundColor: "rgba(0,0,0,0.3)" }}
+                        style={{ flex: 1, minWidth: 220, backgroundColor: "var(--color-bg-base)", border: "1px solid var(--color-border-subtle)", borderRadius: 4, padding: "8px 12px", color: "var(--color-text-primary)", fontSize: 13 }}
                       />
-                      <div className="action-buttons">
+                      <div className="action-buttons" style={{ display: "flex", gap: 10 }}>
                         <button 
                           className="btn btn-success" 
                           disabled={decisionLoading}
-                          onClick={() => handleDecision(selectedFlag.id, "approved")}
+                          onClick={() => handleDecision(selectedFlag ? selectedFlag.id : selectedOrder.id, "approved", !selectedFlag)}
+                          style={{ backgroundColor: "var(--color-status-green)", color: "#000", fontWeight: 700, border: "none", padding: "8px 16px", borderRadius: 4, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}
                         >
-                          <CheckCircle2 size={16} /> Force Approve
+                          <CheckCircle2 size={16} /> Accept Order
                         </button>
                         <button 
                           className="btn btn-danger" 
                           disabled={decisionLoading}
-                          onClick={() => handleDecision(selectedFlag.id, "rejected")}
+                          onClick={() => handleDecision(selectedFlag ? selectedFlag.id : selectedOrder.id, "rejected", !selectedFlag)}
+                          style={{ backgroundColor: "var(--color-status-red)", color: "#fff", fontWeight: 700, border: "none", padding: "8px 16px", borderRadius: 4, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}
                         >
                           <XCircle size={16} /> Reject Order
                         </button>
                       </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Admin Override Bar when order is already Approved or Rejected */}
+                {!(selectedOrder.status === "pending_review" || selectedFlag) && (
+                  <div style={{ backgroundColor: "var(--color-bg-surface)", border: "1px solid var(--color-border-subtle)", borderRadius: 8, padding: "12px 16px", marginBottom: 24, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div style={{ fontSize: 13, color: "var(--color-text-muted)", display: "flex", alignItems: "center", gap: 8 }}>
+                      <span>Status: <strong className={`status ${selectedOrder.status}`}>{selectedOrder.status.replace("_", " ").toUpperCase()}</strong></span>
+                      <span>• Admin Override Action:</span>
+                    </div>
+                    <div style={{ display: "flex", gap: 10 }}>
+                      <button 
+                        className="btn btn-success" 
+                        disabled={decisionLoading || selectedOrder.status === "approved"}
+                        onClick={() => handleDecision(selectedOrder.id, "approved", true)}
+                        style={{ backgroundColor: selectedOrder.status === "approved" ? "var(--color-bg-elevated)" : "var(--color-status-green)", color: selectedOrder.status === "approved" ? "var(--color-text-muted)" : "#000", fontWeight: 600, border: "none", padding: "6px 12px", borderRadius: 4, cursor: selectedOrder.status === "approved" ? "not-allowed" : "pointer", fontSize: 12, display: "flex", alignItems: "center", gap: 4 }}
+                      >
+                        <CheckCircle2 size={14} /> Mark Approved
+                      </button>
+                      <button 
+                        className="btn btn-danger" 
+                        disabled={decisionLoading || selectedOrder.status === "rejected"}
+                        onClick={() => handleDecision(selectedOrder.id, "rejected", true)}
+                        style={{ backgroundColor: selectedOrder.status === "rejected" ? "var(--color-bg-elevated)" : "var(--color-status-red)", color: selectedOrder.status === "rejected" ? "var(--color-text-muted)" : "#fff", fontWeight: 600, border: "none", padding: "6px 12px", borderRadius: 4, cursor: selectedOrder.status === "rejected" ? "not-allowed" : "pointer", fontSize: 12, display: "flex", alignItems: "center", gap: 4 }}
+                      >
+                        <XCircle size={14} /> Mark Rejected
+                      </button>
                     </div>
                   </div>
                 )}
