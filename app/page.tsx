@@ -299,7 +299,7 @@ export default function SentrixDashboard() {
         </div>
       )}
 
-      <div style={{ padding: "16px 24px", borderBottom: "1px solid var(--color-border-subtle)", display: "flex", gap: 12 }}>
+      <div style={{ padding: "16px 24px", borderBottom: "1px solid var(--color-border-subtle)", display: "flex", gap: 12, flexShrink: 0 }}>
         <button 
           className={`pill ${activeTab === "ledger" ? "active" : ""}`} 
           onClick={() => setActiveTab("ledger")}
@@ -500,7 +500,7 @@ export default function SentrixDashboard() {
               </div>
             </div>
 
-            <div className="content-area" style={{ flex: 1, minHeight: 0, overflowY: "auto", paddingBottom: 20 }}>
+            <div className="customer-feed-scroll" style={{ flex: "1 1 0%", minHeight: 0, maxHeight: "100%", overflowY: "auto", overflowX: "hidden", padding: "12px 16px 32px 16px", display: "block" }}>
               {customers
                 .filter(c => !searchQuery || c.name.toLowerCase().includes(searchQuery.toLowerCase()) || c.whatsapp_phone.includes(searchQuery))
                 .map(cust => (
@@ -730,7 +730,7 @@ export default function SentrixDashboard() {
             </div>
           </div>
           
-          <div className="content-area" style={{ flex: 1, minHeight: 0, overflowY: "auto", paddingBottom: 20 }}>
+          <div className="order-feed-scroll" style={{ flex: "1 1 0%", minHeight: 0, maxHeight: "100%", overflowY: "auto", overflowX: "hidden", padding: "12px 16px 32px 16px", display: "block" }}>
             {(() => {
               const filteredOrders = orders
                 .filter(o => statusFilter === "all" || o.status === statusFilter)
