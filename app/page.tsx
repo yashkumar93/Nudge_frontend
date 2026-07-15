@@ -53,6 +53,8 @@ type AnomalyFlag = {
   orders?: Order;
 };
 
+const COLORS = ['#4ca28d', '#e05b45', '#d49a4f', '#6c8fb7', '#8a65b7', '#b59e5f', '#4ea277', '#c15e8b', '#489f9e', '#5e7c8a'];
+
 export default function SentrixDashboard() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [flags, setFlags] = useState<AnomalyFlag[]>([]);
@@ -255,73 +257,96 @@ export default function SentrixDashboard() {
       </div>
       
       {activeTab === "analytics" ? (
-        <div style={{ padding: 24, overflowY: "auto", flex: 1 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, marginBottom: 24 }}>
-            <div className="card" style={{ padding: 20 }}>
-              <div style={{ color: "var(--color-text-muted)", fontSize: 13 }}>Total Orders</div>
-              <div style={{ fontSize: 24, fontWeight: 600, marginTop: 8 }}>{analyticsData?.total_orders || 0}</div>
-            </div>
-            <div className="card" style={{ padding: 20 }}>
-              <div style={{ color: "var(--color-text-muted)", fontSize: 13 }}>Total Revenue</div>
-              <div style={{ fontSize: 24, fontWeight: 600, marginTop: 8 }}>₹{(analyticsData?.total_revenue || 0).toLocaleString()}</div>
-            </div>
-            <div className="card" style={{ padding: 20 }}>
-              <div style={{ color: "var(--color-text-muted)", fontSize: 13 }}>Approval Rate</div>
-              <div style={{ fontSize: 24, fontWeight: 600, marginTop: 8 }}>
-                {analyticsData ? Math.round((analyticsData.decisions.approved / ((analyticsData.decisions.approved + analyticsData.decisions.rejected) || 1)) * 100) : 0}%
+        <div style={{ padding: "24px", overflowY: "auto", flex: 1, display: "flex", flexDirection: "column", gap: 24, backgroundColor: "#171a19" }}>
+          
+          <div style={{ backgroundColor: "#1e2421", borderRadius: 8, padding: "24px 32px" }}>
+            <h3 style={{ fontSize: 13, fontWeight: 600, color: "#8da598", marginBottom: 32, textTransform: "uppercase", letterSpacing: "1px" }}>Order Distribution</h3>
+            
+            <div style={{ display: "flex", gap: 64, alignItems: "center" }}>
+              {/* Chart */}
+              <div style={{ position: "relative", width: 240, height: 240 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={analyticsData?.order_distribution || []}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={80}
+                      outerRadius={110}
+                      paddingAngle={2}
+                      dataKey="count"
+                      stroke="none"
+                    >
+                      {(analyticsData?.order_distribution || []).map((entry: any, index: number) => (
+                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip 
+                        contentStyle={{ backgroundColor: "#1e2421", border: "1px solid #2a342f", color: "#fff" }}
+                        itemStyle={{ color: "#fff" }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", textAlign: "center" }}>
+                  <div style={{ fontSize: 36, fontWeight: "bold", color: "#fff", lineHeight: 1 }}>
+                    {analyticsData?.total_orders || 0}
+                  </div>
+                  <div style={{ fontSize: 10, color: "#8da598", textTransform: "uppercase", marginTop: 8, letterSpacing: "0.5px" }}>
+                    Total Orders
+                  </div>
+                </div>
+              </div>
+
+              {/* Legend / List */}
+              <div style={{ flex: 1, display: "flex", flexDirection: "column", marginTop: -20 }}>
+                {(analyticsData?.order_distribution || []).map((item: any, i: number) => (
+                  <div key={item.name} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 0", borderBottom: i < (analyticsData?.order_distribution.length - 1) ? "1px solid #2a342f" : "none" }}>
+                    <div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <div style={{ width: 8, height: 8, borderRadius: "50%", backgroundColor: COLORS[i % COLORS.length] }} />
+                        <span style={{ color: "#d3dcd7", fontSize: 14 }}>{item.name}</span>
+                      </div>
+                      <div style={{ color: "#7a8a83", fontSize: 12, marginLeft: 16, marginTop: 4 }}>
+                        #{i + 1} &nbsp;&middot;&nbsp; {item.percentage}%
+                      </div>
+                    </div>
+                    <div style={{ color: "#fff", fontWeight: 600, fontSize: 14 }}>
+                      {item.count}
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 16 }}>
-            <div className="card" style={{ padding: 20 }}>
-              <h3 style={{ marginBottom: 20, fontSize: 14 }}>Order Volume Trend</h3>
-              <div style={{ height: 300 }}>
-                {analyticsData && (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={analyticsData.volume_trend}>
-                      <XAxis dataKey="date" stroke="var(--color-text-muted)" fontSize={12} tickLine={false} axisLine={false} />
-                      <YAxis stroke="var(--color-text-muted)" fontSize={12} tickLine={false} axisLine={false} />
-                      <Tooltip cursor={{ fill: "var(--color-bg-surface)" }} contentStyle={{ backgroundColor: "var(--color-bg-elevated)", border: "1px solid var(--color-border-subtle)", borderRadius: 8 }} />
-                      <Bar dataKey="orders" fill="var(--color-text-primary)" radius={[4, 4, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                )}
+          {/* Bottom Metrics Bar */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr auto", gap: 24, backgroundColor: "#1c211f", borderTop: "1px solid #262f2b", borderRadius: 8, padding: "20px 32px", alignItems: "center" }}>
+            <div>
+              <div style={{ fontSize: 10, color: "#7a8a83", textTransform: "uppercase", letterSpacing: "1px", marginBottom: 8 }}>Most Active Customer</div>
+              <div style={{ fontSize: 18, color: "#fff", fontWeight: 600 }}>
+                {analyticsData?.most_active_customer?.name || "-"} <span style={{ color: "#7a8a83", margin: "0 4px" }}>&middot;</span> {analyticsData?.most_active_customer?.count || 0}
               </div>
             </div>
-            <div className="card" style={{ padding: 20 }}>
-              <h3 style={{ marginBottom: 20, fontSize: 14 }}>Anomaly Severity</h3>
-              <div style={{ height: 260 }}>
-                {analyticsData && (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={analyticsData.severities.filter((s: any) => s.value > 0)}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={60}
-                        outerRadius={80}
-                        paddingAngle={5}
-                        dataKey="value"
-                      >
-                        {analyticsData.severities.map((entry: any, index: number) => {
-                          const colors: any = { Low: "#3f3f46", Medium: "#eab308", High: "#f97316", Critical: "#ef4444" };
-                          return <Cell key={`cell-${index}`} fill={colors[entry.name] || "#ffffff"} />;
-                        })}
-                      </Pie>
-                      <Tooltip contentStyle={{ backgroundColor: "var(--color-bg-elevated)", border: "1px solid var(--color-border-subtle)", borderRadius: 8 }} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                )}
-                <div style={{ display: "flex", justifyContent: "center", gap: 12, flexWrap: "wrap", marginTop: 12 }}>
-                  {analyticsData?.severities.map((s: any) => (
-                    <div key={s.name} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: "var(--color-text-muted)" }}>
-                      <div style={{ width: 8, height: 8, borderRadius: "50%", backgroundColor: s.name === "Low" ? "#3f3f46" : s.name === "Medium" ? "#eab308" : s.name === "High" ? "#f97316" : "#ef4444" }}></div>
-                      {s.name} ({s.value})
-                    </div>
-                  ))}
-                </div>
+            <div style={{ borderLeft: "1px solid #262f2b", paddingLeft: 32 }}>
+              <div style={{ fontSize: 10, color: "#7a8a83", textTransform: "uppercase", letterSpacing: "1px", marginBottom: 8 }}>Highest Deviation This Week</div>
+              <div style={{ fontSize: 18, color: "#e05b45", fontWeight: 600 }}>
+                {analyticsData?.highest_deviation || "-"}
               </div>
+            </div>
+            <div style={{ borderLeft: "1px solid #262f2b", paddingLeft: 32 }}>
+              <div style={{ fontSize: 10, color: "#7a8a83", textTransform: "uppercase", letterSpacing: "1px", marginBottom: 8 }}>Orders Today</div>
+              <div style={{ fontSize: 18, color: "#fff", fontWeight: 600 }}>
+                {analyticsData?.orders_today || 0}
+              </div>
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <button 
+                onClick={() => setOrderModalOpen(true)}
+                style={{ backgroundColor: "#e05b45", color: "#fff", border: "none", borderRadius: 4, padding: "12px 24px", fontSize: 13, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 8, letterSpacing: "1px" }}
+              >
+                <div style={{ width: 6, height: 6, backgroundColor: "#fff", borderRadius: "50%", opacity: 0.5 }} />
+                PLACE ORDER
+              </button>
             </div>
           </div>
         </div>
